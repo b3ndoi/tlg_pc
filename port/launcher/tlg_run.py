@@ -80,6 +80,7 @@ DEFAULT_SETTINGS = {
     'game_language': 'pt_BR',
     'ui_language': 'auto',         # auto | pt_BR | en_US
     'show_fps': False,
+    'photo_mode': False,          # experimental EU 01.00 / 60 FPS only, startup opt-in
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
     'vsync': True,
     'vram_budget_mb': 5600,
@@ -475,6 +476,9 @@ def build_env(settings, extra=None):
     # The present limiter never lets more frames through than the patched engine rate; unlocked
     # flips as soon as a frame is ready (480 Hz vblank) up to the display refresh or the menu limit.
     env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
+    env.pop('TLG_PHOTO_MODE', None)
+    if os.name == 'nt' and applied_frame_rate == '60' and settings.get('photo_mode', False):
+        env['TLG_PHOTO_MODE'] = '1'
     if applied_frame_rate == 'unlocked':
         env.setdefault('TLG_VBLANK_HZ', '0')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'

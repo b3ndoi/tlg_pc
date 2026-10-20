@@ -32,7 +32,9 @@ typedef int (TLG_INPUT_ABI *TlgScriptLoad)(void *, void *, const char *, size_t,
 extern "C" {
 #endif
 void tlg_script_60_configure(TlgScriptLoad original);
+void tlg_script_60_enable(int enabled);
 char *tlg_script_60_transform(const char *source, size_t size, size_t *output_size, const char **path);
+char *tlg_photo_append(const char *source,size_t size,size_t *output_size);
 int TLG_INPUT_ABI tlg_script_60_load(void *vm, void *options, const char *source, size_t size, const char *name);
 #ifdef __cplusplus
 }

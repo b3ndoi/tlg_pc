@@ -142,5 +142,6 @@
   "hidden_trophy": "Troféu oculto",
   "trophy_progress": "{count} / {total} troféus desbloqueados localmente",
   "trophy_locked": "Bloqueado",
-  "trophy_unlocked": "Desbloqueado"
+  "trophy_unlocked": "Desbloqueado",
+  "photo_mode": "Modo foto experimental (Windows EU 01.00, apenas 60 FPS; F8 / F9)"
 }

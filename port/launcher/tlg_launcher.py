@@ -286,6 +286,7 @@ class Launcher:
         ttk.Label(page, text=self.t('vram_hint'), style='Muted.TLabel', wraplength=880,
                   justify='left').grid(row=6, column=0, columnspan=3, sticky='w', pady=(6, 8))
         self.build_filters(page, 7)
+        self.check(page, 20, 'photo_mode')
 
     def build_controls(self, page):
         page.columnconfigure(1, weight=1)

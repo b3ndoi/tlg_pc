@@ -13,6 +13,7 @@
 #include "actor_hook.h"
 #include "damage_hook.h"
 #include "gpu/tlggpu.h"
+#include "runtime_photo.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -590,7 +591,9 @@ static void install_tlg_clock_sync_60(const char *app0, Segment *segments,
 static void install_tlg_script_timing_60(const char *app0, Segment *segments,
                                         uint64_t count, uint64_t size) {
     const char *enabled = getenv("TLG_TIMING_60");
-    if (!enabled || strcmp(enabled,"1")) return;
+    const char *photo=getenv("TLG_PHOTO_MODE");
+    int photo_requested=photo && !strcmp(photo,"1");
+    if ((!enabled || strcmp(enabled,"1")) && !photo_requested) return;
     char path[4096], serial[32] = "", version[32] = "";
     snprintf(path,sizeof(path),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
     sfo_value(path,"TITLE_ID",serial,sizeof(serial),NULL);
@@ -616,8 +619,12 @@ static void install_tlg_script_timing_60(const char *app0, Segment *segments,
     tlg_input_abs_jump(relay+32,(uintptr_t)tlg_script_60_load);
     protect(relay,page_size,5);
     tlg_script_60_configure((TlgScriptLoad)relay);
+    tlg_script_60_enable(enabled && !strcmp(enabled,"1"));
     memcpy(image+TLG_SCRIPT_LOAD,entry,8);
-    printf("60 FPS script timing: experimental EU 01.00 loader ready; 8 exact-source patches, no archive writes\n");
+    runtime_photo_enable(photo_requested);
+    if (photo_requested) printf("Photo mode: opted in; exact EU 01.00 / 60 FPS only; F8 toggles, F9 captures 1440p; cutscenes refused\n");
+    printf("Experimental EU Lua loader ready: timing fixes %s, photo mode %s; no archive writes\n",
+           enabled && !strcmp(enabled,"1") ? "enabled" : "unchanged",photo_requested ? "opted in" : "off");
 }
 
 static void install_tlg_input_timing_60(const char *app0, Segment *segments,

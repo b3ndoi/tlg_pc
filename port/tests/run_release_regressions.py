@@ -32,7 +32,7 @@ def main():
     for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
                  'test_launcher_localization.py', 'test_launcher_ui.py', 'test_trophy_catalog.py',
                  'test_native_trophies.py', 'test_trophy_save_audit.py', 'test_package_assets.py',
-                 'test_prompt_settings.py'):
+                 'test_prompt_settings.py', 'test_photo_mode.py'):
         run([sys.executable, PORT/'tests'/name])
     cxx = shutil.which('clang++' if sys.platform=='win32' else os.environ.get('CXX','c++'))
     if not cxx:
@@ -63,6 +63,9 @@ def main():
     if not cc or not cxx:
         parser.error('clang and clang++ from MSYS2 CLANG64 must be on PATH')
     native = [
+        ('photo-runtime', ['tests/test_runtime_photo.c','src/runtime_photo.c'], ['-pthread'], []),
+        ('photo-mailbox', ['tests/test_photo_mailbox.c','src/runtime_photo.c','src/compat_win.c'],
+         ['-pthread','-lbcrypt','-lonecore'], []),
         ('prompt-image', ['tests/test_prompt_image.cpp','gpu/shim/tlg_prompts.cpp',
                           'gpu/shim/tlg_prompt_image.cpp','gpu/shim/tlg_png.cpp'],
          ['-lxxhash','-lavcodec','-lavutil','-lswscale'], []),
