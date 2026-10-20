@@ -639,6 +639,22 @@ std::tuple<ImageId, int, int> TextureCache::ResolveOverlap(const ImageInfo& imag
             return {ExpandImage(image_info, cache_image_id), -1, -1};
         }
 
+        if (IsVolumeDepthExpansion(cache_image.info, image_info)) {
+            // EU TLG grows a 36x36 volume from 1143 to 1512 slices at the same address.
+            // Its mip/layer counts stay 1, so the resources comparison below misses it.
+            // Keep the common GPU contents, but refresh/synchronize the source first so
+            // stale cached pixels cannot overwrite newer guest or alias data. FindImage
+            // already holds mutex here; do not call UpdateImage (which locks it again).
+            TrackImage(cache_image_id);
+            RefreshImage(cache_image);
+            SynchronizeAlias(cache_image_id);
+            LOG_INFO(Render_Vulkan, "Expanding 3D texture at {:#x}: {}x{}x{} -> {}x{}x{}",
+                     image_info.guest_address, cache_image.info.size.width,
+                     cache_image.info.size.height, cache_image.info.size.depth,
+                     image_info.size.width, image_info.size.height, image_info.size.depth);
+            return {ExpandImage(image_info, cache_image_id), -1, -1};
+        }
+
         const bool pow2_padding_only =
             image_info.props.is_pow2 != cache_image.info.props.is_pow2 &&
             image_info.tile_mode == cache_image.info.tile_mode &&
