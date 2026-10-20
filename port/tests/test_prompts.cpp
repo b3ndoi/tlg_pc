@@ -89,7 +89,7 @@ static void CheckBc7(const Picture &p, const std::vector<uint8_t> &blocks) {
 
 int main(int argc, char **argv) {
   SelectionTests();
-  for (const auto [w, h] : std::array<std::pair<uint32_t, uint32_t>, 4>{
+  for (const auto& [w, h] : std::array<std::pair<uint32_t, uint32_t>, 4>{
            {{1599, 984}, {1920, 1080}, {4, 4096}, {4096, 4}}}) {
     const auto r = GuideImageBounds(w, h);
     assert(r.x >= 260 && r.y >= 120 && r.x + r.width <= 1020.01f &&
