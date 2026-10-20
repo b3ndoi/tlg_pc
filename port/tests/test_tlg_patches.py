@@ -69,12 +69,13 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertTrue(any('unsupported eboot.bin' in line for line in lines))
 
     def test_verified_eu_self_uses_eu_offsets(self):
-        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        names = [*t.MODES['60'], *t.EU_100_60_EXTRA]
+        eboot = self_dump(text_with(names, patches=t.EU_100_PATCHES))
         with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()):
             applied, lines, blob = self.prepare(eboot, '60')
         self.assertEqual(applied, '60')
         self.assertTrue(any('CUSA03745 EU 01.00' in line for line in lines))
-        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 4))
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 5))
         pos, writes = 24, []
         while pos < len(blob):
             offset, size = struct.unpack_from('<QQ', blob, pos)
@@ -84,7 +85,17 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertEqual(writes, [(0xb8be7c, bytes.fromhex('be00000000')),
                                   (0x14d9920, t.f32(0.0175)),
                                   (0x14d9924, t.f32(1 / 60)),
-                                  (0x14d9928, t.f32(0.0158333331))])
+                                  (0x14d9928, t.f32(0.0158333331)),
+                                  (0x14e8bd4, t.f32(8.0))])
+
+    def test_eu_30fps_keeps_original_grass_cadence_and_empty_patch_file(self):
+        text = text_with(t.EU_100_60_EXTRA, patches=t.EU_100_PATCHES)
+        eboot = self_dump(text)
+        with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()):
+            applied, lines, blob = self.prepare(eboot, '30')
+        self.assertEqual(applied, '30')
+        self.assertIn('Frame rate: 30 FPS mode, 0 patch writes', lines)
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
 
     def test_eu_plain_elf_unlocked(self):
         eboot = plain_elf(text_with(t.MODES['unlocked'], patches=t.EU_100_PATCHES))
@@ -94,13 +105,13 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 1))
 
     def test_unrecognized_eu_layout_stays_at_30(self):
-        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        eboot = self_dump(text_with([*t.MODES['60'], *t.EU_100_60_EXTRA], patches=t.EU_100_PATCHES))
         applied, _, blob = self.prepare(eboot, '60')
         self.assertEqual(applied, '30')
         self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
 
     def test_eu_mismatched_constant_discards_all_writes(self):
-        text = text_with(t.MODES['60'], patches=t.EU_100_PATCHES)
+        text = text_with([*t.MODES['60'], *t.EU_100_60_EXTRA], patches=t.EU_100_PATCHES)
         text[0x14d9928] ^= 1
         eboot = self_dump(text)
         with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()):
@@ -110,7 +121,7 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
 
     def test_unmapped_experimental_patch_rejected_for_eu(self):
-        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        eboot = self_dump(text_with([*t.MODES['60'], *t.EU_100_60_EXTRA], patches=t.EU_100_PATCHES))
         with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()), \
                 patch.dict('os.environ', {'TLG_FPS_PATCHES': 'max_fps_off'}):
             applied, lines, blob = self.prepare(eboot, '60')

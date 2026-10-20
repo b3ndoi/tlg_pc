@@ -617,7 +617,7 @@ static void install_tlg_script_timing_60(const char *app0, Segment *segments,
     protect(relay,page_size,5);
     tlg_script_60_configure((TlgScriptLoad)relay);
     memcpy(image+TLG_SCRIPT_LOAD,entry,8);
-    printf("60 FPS script timing: experimental EU 01.00 loader ready; 8 exact-source patches, no archive writes\n");
+    printf("60 FPS script timing: experimental EU 01.00 loader ready; 9 exact-source patches, no archive writes\n");
 }
 
 static void install_tlg_input_timing_60(const char *app0, Segment *segments,

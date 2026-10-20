@@ -81,9 +81,10 @@ def apply_private_patch(elf_path, patch_path):
     path = Path(patch_path)
     writes = decode_patch_file(path.read_bytes())
     expected_fps = [(offset, data) for offset, data, _ in tlg_patches.mode_writes(
-        elf, tlg_patches.MODES['60'], tlg_patches.EU_100_PATCHES, tlg_patches.EU_100_TEXT_SIZE)]
+        elf, [*tlg_patches.MODES['60'], *tlg_patches.EU_100_60_EXTRA],
+        tlg_patches.EU_100_PATCHES, tlg_patches.EU_100_TEXT_SIZE)]
     if writes != expected_fps:
-        raise ValueError('Native resolution: expected exactly the four verified EU 60 FPS writes')
+        raise ValueError('Native resolution: expected exactly the five verified EU 60 FPS writes')
     for address, data in resolution:
         if any(address < old+len(previous) and old < address+len(data) for old, previous in writes):
             raise ValueError('Native resolution: overlapping patches')
@@ -94,4 +95,4 @@ def apply_private_patch(elf_path, patch_path):
     path.write_bytes(blob)
     return (f'Engine native resolution: CUSA03745 EU 01.00 verified; regular mode guest '
             f'+{MODE_OFFSET:#x}: render/output 2560x1440; checkerboard off; '
-            'Pro table, pointers and 16:9 UI/aspect unchanged (5 total writes, 33 bytes)')
+            'Pro table, pointers and 16:9 UI/aspect unchanged (6 total writes, 37 bytes)')

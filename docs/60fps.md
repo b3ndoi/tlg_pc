@@ -54,7 +54,7 @@ data, pause/direction resets and nested update contexts). The live
 of climbing, grabbing and calming Trico remains pending.**
 
 `script_timing_60.[ch]` additionally detours the verified five-argument SysV
-`hksi_hksL_loadbuffer` at image `+0xdd4dd0` (caller `+0xc898fe`). Eight original
+`hksi_hksL_loadbuffer` at image `+0xdd4dd0` (caller `+0xc898fe`). Nine original
 EU Lua sources are recognized by exact length and SHA-256; optional terminating
 NULs are accepted. Only generated, non-overlapping edits are made in a temporary
 compiler-input copy. No archives or loose game assets are written. Unknown or
@@ -64,7 +64,8 @@ the log. The original VM/options/chunk name/compiler status are preserved.
 The source-guarded corrections cover normal-mode petting-to-sleep duration,
 barrel-interest and async movement wait budgets, selected hard-coded 1/30-second
 mission timers, First Flight bridge-shake delays, mirror angle steps and
-balancer controller cadence, plus elevator stationary-sound detection. AI paths
+balancer controller cadence, elevator stationary-sound detection, and the
+skin-wind update cadence. AI paths
 use `currentInfo.dt`; mission/mechanism paths use `GetGameDeltaTime()`. Fractional
 30 Hz-equivalent ages preserve strict whole-update thresholds. Cadence uses
 interval-boundary crossings, not modulo on fractional ages. Existing next-update
@@ -72,10 +73,10 @@ deferrals, request state indices, native excitement/stroke cooldowns and authore
 animation markers are not rescaled.
 
 `tlg_script_timing_60.py` regenerates the checked-in edit table from the user's
-unmodified extracted assets. Nine offline Lua 5.1 tests cover syntax of all eight
+unmodified extracted assets. Ten offline Lua 5.1 tests cover syntax of all nine
 original/changed scripts, actual petting/space-check/mirror functions, targeted
 mission/barrel/head-check fragments, variable cadence and pause/invalid dt.
-The production C transformer matches the Python result for all eight sources;
+The production C transformer matches the Python result for all nine sources;
 612 other extracted scripts remain unchanged. Its native detour and all five
 arguments/return status are replayed with a compiler stub. Real ELF gates reject
 30 FPS/unlocked/other versions/mutated signatures. The retained 1,810 ISA sites
@@ -84,6 +85,27 @@ and 2,214 red-zone groups do not overlap any timing hook.
 This is not full live HavokScript VM / controller / AI / physics validation.
 The candidate is separate, not installed or launched; gameplay A/B validation
 is pending. These targeted fixes do not certify every subsystem at 60 FPS.
+
+### Vegetation cadence correction
+
+The verified EU executable initializes each `GrassType` with `slowFrame=4` and
+`skipFrame=4` at image `+0x14e8bc0`. The main state script also sets
+`skinWindMaxFrameSkip=1`, and Falling Bridge explicitly restores `skipFrame=4`
+for four ivy instances. At 60 FPS those frame-counted skips can expose a visible
+sub-cadence even when the camera and geometry render smoothly.
+
+The 60 FPS profile changes only
+`GrassType.skipFrame` from 4 to 8 and `skinWindMaxFrameSkip` from 1 to 2. Exact
+bytes and exact Lua source hashes gate the edits. Authored wind speed,
+acceleration, damping, `slowFrame`, the inactive `slipFrame` typo, saves and
+archives are untouched. The 30 FPS mode still emits an empty built-in patch
+file and receives no script transform.
+
+Local 2560x1440/60 FPS gameplay testing in vegetation-heavy areas showed a
+clearer, more comfortable leaf/ivy cadence, and the user confirmed that the
+vegetation fix worked. This validates the targeted visual improvement on the
+tested EU 01.00 build; it does not claim that every vegetation system or scene
+has completed full-game validation.
 
 Estado em 13/10/2026: **experimental, desligado por padrão.** O modo 30 FPS é o jogo como no PS4,
 sem nenhum patch.
@@ -215,11 +237,12 @@ its 2.5-ms first-tick threshold and leave animation/mission completion stalled.
 
 `port/scripts/tlg_slowmotion_60.py` is an opt-in private-v6 patch, NOT a change to
 the general 30-FPS/default launcher. It requires the exact EU ELF hash, verified
-clock/scale/zero-gate instructions, and the exact four 60-FPS writes plus native
+clock/scale/zero-gate instructions, and the exact five 60-FPS writes plus native
 1440p. It changes only the two clock-grid constants to 36000000 and its reciprocal.
 The filter, bias, game-speed curves, native near-zero epsilon, zero-speed/overlay
 pauses, instructions and original 30-FPS profile remain unchanged. Two extra
-4-byte writes make seven private profile writes / 41 bytes total. Unknown,
+4-byte writes make eight private profile writes / 45 bytes total with the
+vegetation-cadence correction enabled. Unknown,
 30-FPS, unlocked and malformed/duplicate profiles fail closed without writing.
 
 `tests/test_slowmotion_clock_win.cpp` executes the real original EU leaf routine

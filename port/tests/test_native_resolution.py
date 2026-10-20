@@ -41,7 +41,8 @@ class NativeResolutionTests(unittest.TestCase):
     def test_fps_is_retained_and_private_patch_file_only(self):
         before_elf = hashlib.sha256(ELF).hexdigest()
         old = [(offset,data) for offset,data,_ in tlg_patches.mode_writes(
-            ELF,tlg_patches.MODES['60'],tlg_patches.EU_100_PATCHES,tlg_patches.EU_100_TEXT_SIZE)]
+            ELF,[*tlg_patches.MODES['60'],*tlg_patches.EU_100_60_EXTRA],
+            tlg_patches.EU_100_PATCHES,tlg_patches.EU_100_TEXT_SIZE)]
         with tempfile.TemporaryDirectory(dir='.') as directory:
             root = Path(directory)
             elf = root/'eboot.elf'
@@ -50,9 +51,9 @@ class NativeResolutionTests(unittest.TestCase):
             tlg_patches.write_patch_file(patches, [(offset,data,'test') for offset,data in old])
             note = n.apply_private_patch(elf,patches)
             writes = n.decode_patch_file(patches.read_bytes())
-            self.assertEqual(writes[:4],old)
-            self.assertEqual(writes[4:],[(n.MODE_OFFSET,n.MODE_NEW)])
-            self.assertEqual(sum(len(data) for _,data in writes),33)
+            self.assertEqual(writes[:5],old)
+            self.assertEqual(writes[5:],[(n.MODE_OFFSET,n.MODE_NEW)])
+            self.assertEqual(sum(len(data) for _,data in writes),37)
             self.assertIn('checkerboard off',note)
             self.assertEqual(hashlib.sha256(elf.read_bytes()).hexdigest(),before_elf)
             with self.assertRaises(ValueError): n.apply_private_patch(elf,patches)

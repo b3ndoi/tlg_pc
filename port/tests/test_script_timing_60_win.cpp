@@ -112,7 +112,7 @@ int main(int argc,char **argv) {
             assert(!tlg_script_60_transform(source.data(),source.size()-1,&output_size,&path));
         }
     }
-    assert(transformed==8 && unchanged>=600);
+    assert(transformed==9 && unchanged>=600);
     assert(VirtualFree(memory,0,MEM_RELEASE));
     std::printf("PASS: %u exact scripts transformed identically to Python; %u untouched; mutations rejected; real detour/5-argument SysV ABI/return/source immutability\n",transformed,unchanged);
 }
