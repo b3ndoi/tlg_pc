@@ -19,7 +19,7 @@ PORT = Path(__file__).resolve().parents[1]
 
 def run(argv, **kwargs):
     print('+ ' + ' '.join(map(str, argv)), flush=True)
-    subprocess.run(list(map(str, argv)), check=True, timeout=180, cwd=PORT, **kwargs)
+    subprocess.run(list(map(str, argv)), check=True, timeout=180, cwd=kwargs.pop('cwd', PORT), **kwargs)
 
 
 def main():
@@ -31,8 +31,20 @@ def main():
         parser.error('--elf must be an existing local file')
     for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
                  'test_launcher_localization.py', 'test_launcher_ui.py', 'test_trophy_catalog.py',
-                 'test_native_trophies.py', 'test_trophy_save_audit.py', 'test_package_assets.py'):
+                 'test_native_trophies.py', 'test_trophy_save_audit.py', 'test_package_assets.py',
+                 'test_prompt_settings.py'):
         run([sys.executable, PORT/'tests'/name])
+    cxx = shutil.which('clang++' if sys.platform=='win32' else os.environ.get('CXX','c++'))
+    if not cxx:
+        parser.error('a C++23 compiler is required for prompt/settings fixtures')
+    with tempfile.TemporaryDirectory(prefix='tlg-prompt-tests-') as directory:
+        for name,sources,extra in (
+            ('prompts',['tests/test_prompts.cpp','gpu/shim/tlg_prompts.cpp'],['-lxxhash']),
+            ('graphics-settings',['tests/test_graphics_settings.cpp','gpu/shim/tlg_settings.cpp'],[])):
+            target=Path(directory)/(name+('.exe' if sys.platform=='win32' else ''))
+            run([cxx,'-std=c++23','-O2','-UNDEBUG','-Wall','-Wextra','-Werror','-Igpu/shim',
+                 *sources,*extra,'-o',target])
+            run([target],cwd=directory)
     if sys.platform != 'win32':
         cc = shutil.which(os.environ.get('CC', 'cc'))
         if not cc:
@@ -51,6 +63,11 @@ def main():
     if not cc or not cxx:
         parser.error('clang and clang++ from MSYS2 CLANG64 must be on PATH')
     native = [
+        ('prompt-image', ['tests/test_prompt_image.cpp','gpu/shim/tlg_prompts.cpp',
+                          'gpu/shim/tlg_prompt_image.cpp','gpu/shim/tlg_png.cpp'],
+         ['-lxxhash','-lavcodec','-lavutil','-lswscale'], []),
+        ('pad-map', ['tests/test_pad_map.c','src/compat_win.c'],
+         ['-lSDL3','-lbcrypt','-lonecore','-pthread'], []),
         ('fault-dispatch', ['tests/test_fault_dispatch_win.c', 'src/compat_win.c'],
          ['-lbcrypt', '-lonecore', '-pthread'], []),
         ('queued-commands', ['tests/test_queued_commands.cpp'], [], []),
@@ -98,7 +115,7 @@ def main():
             if name == 'trophy-state':
                 bridge = "import sys;sys.path.insert(0,'launcher');import native_trophies as n;"
                 run([sys.executable, '-c', bridge + "n.seed(sys.argv[1],'CUSA03745',{'9':{'unlocked_at':'2026-10-20T12:00:00+00:00','source':'game_trophy'}},3)", output / 'native-trophy-state'])
-            private = [output / ('native-' + name + '-state')] if name in ('trophy-state', 'services') else []
+            private = [output / ('native-' + name + '-state')] if name in ('trophy-state', 'services', 'prompt-image') else []
             # Keep the bridge's seed/output name stable for its Python checks.
             if name == 'trophy-state':
                 private = [output / 'native-trophy-state']

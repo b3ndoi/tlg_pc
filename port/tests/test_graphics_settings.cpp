@@ -7,6 +7,7 @@
 #include <string>
 #include "tlg_graphics.h"
 #include "tlg_settings.h"
+#include "tlg_prompts.h"
 
 #ifndef _WIN32
 static int _putenv_s(const char* name, const char* value) { return setenv(name, value, 1); }
@@ -47,13 +48,21 @@ int main() {
                "render_resolution=1440p\nengine_fps=240\ndeferred_readback=0\nstale_readback=1\n"
                "fsr1=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n"
                "smaa=1\ncas=1\ncas_strength=30\ncolor_adjust=1\ncolor_brightness=0.10\n"
-               "color_contrast=1.20\ncolor_saturation=0.80\ncolor_gamma=9\n";
+               "color_contrast=1.20\ncolor_saturation=0.80\ncolor_gamma=9\nbutton_prompts=auto\n";
     }
     _putenv_s("TLG_CONFIG", path);
     _putenv_s("TLG_ASYNC_SHADERS", "");
+    _putenv_s("TLG_BUTTON_PROMPTS", "");
     auto& v = TlgSettings::Get();
+    assert(v.button_prompts==TlgPrompts::Original);
     // Filters on the final image are off by default.
     assert(!v.smaa && !v.cas && !v.color_adjust && v.cas_strength == 50 && v.color_gamma == 1.0f);
+    TlgSettings::Load();
+    assert(v.button_prompts==TlgPrompts::Auto);
+    _putenv_s("TLG_BUTTON_PROMPTS", "ps5");
+    TlgSettings::Load();
+    assert(v.button_prompts==TlgPrompts::DualSense);
+    _putenv_s("TLG_BUTTON_PROMPTS", "");
     TlgSettings::Load();
     assert(v.display_mode == G::Borderless && !v.vsync && v.fps_limit == 240 && !v.async_shaders);
     assert(v.render_resolution == 3 && v.engine_fps == 240 && !v.deferred_readback && v.stale_readback);
@@ -79,14 +88,14 @@ int main() {
                              "stale_readback=1\n", "fsr1=1\n", "rcas=0\n", "rcas_strength=40\n",
                              "frames_queued=2\n", "smaa=1\n", "cas=1\n", "cas_strength=30\n",
                              "color_adjust=1\n", "color_brightness=0.10\n", "color_contrast=1.20\n",
-                             "color_saturation=0.80\n", "color_gamma=2.00\n"}) {
+                             "color_saturation=0.80\n", "color_gamma=2.00\n", "button_prompts=auto\n"}) {
         assert(saved.find(line) != std::string::npos);
     }
 
     {
         std::ofstream out(path);
         out << "display_mode=huge\nfps_limit=7\nrender_resolution=8K\nengine_fps=1\n"
-               "rcas_strength=250\nframes_queued=9\n";
+               "rcas_strength=250\nframes_queued=9\nbutton_prompts=invalid\n";
     }
     _putenv_s("TLG_ASYNC_SHADERS", "1");  // the environment still wins at start
     v.async_shaders = false;
@@ -94,6 +103,7 @@ int main() {
     assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0 && v.engine_fps == 120);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);
+    assert(v.button_prompts==TlgPrompts::Original);
     {
         std::ofstream out(path);
         out << "cheat_double_jumps=1\ncheat_very_hard=1\n";

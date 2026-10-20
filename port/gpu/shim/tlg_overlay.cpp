@@ -2,6 +2,7 @@
 #include "tlg_overlay.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cfloat>
 #include <chrono>
@@ -15,6 +16,7 @@
 
 #include <SDL3/SDL.h>
 #include "tlg_settings.h"
+#include "tlg_prompts.h"
 #include "tlg_orbs.h"
 #include "tlg_actors.h"
 #include "tlg_graphics.h"
@@ -105,6 +107,8 @@ std::vector<TlgPng::Image> choice_pictures;
 std::vector<ImTextureData*> choice_textures, choice_retired;
 std::atomic<bool> choice_retiring{false};
 float base_scale = 1.0f;
+bool controller_guide_open=false;
+ImTextureData* controller_guide_texture=nullptr; // full-resolution local image; process lifetime
 
 // Present rate for the FPS counter.
 std::chrono::steady_clock::time_point last_present{};
@@ -528,8 +532,74 @@ void OverlayTab() {
 // Startup options changed since this launch (applied by "Apply and restart").
 // Mouse and keyboard (src/runtime_pad.c): the mouse settings apply at once; the layout is the
 // default one unless the launcher's Controls (tlg.ini key_map) or TLG_KEY_MAP changed it.
+void ControllerGuide() {
+    if(!controller_guide_open || !controller_guide_texture) return;
+    const auto picture=TlgPrompts::DualSensePicture();
+    if(!picture) return;
+    const auto* viewport=ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkSize.x*.5f,viewport->WorkSize.y*.5f),
+                           ImGuiCond_Appearing,ImVec2(.5f,.5f));
+    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x*.90f,viewport->WorkSize.y*.88f),ImGuiCond_Appearing);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(std::min(640.f*base_scale,viewport->WorkSize.x*.95f),
+                                             std::min(420.f*base_scale,viewport->WorkSize.y*.95f)),
+                                       ImVec2(viewport->WorkSize.x*.98f,viewport->WorkSize.y*.98f));
+    if(ImGui::Begin("PS5 controller guide##large_controller",&controller_guide_open,ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::TextWrapped("%s",TL("Local PS5 layout with the port's current keyboard/mouse bindings. Unknown actions keep button names.",
+                                  "Layout PS5 local com as teclas e mouse atuais. Ações desconhecidas mantêm nomes dos botões."));
+        const auto available=ImGui::GetContentRegionAvail();
+        const float k=std::min(available.x/1280.f,available.y/740.f);
+        const auto origin=ImGui::GetCursorScreenPos();
+        auto P=[&](float x,float y){return ImVec2(origin.x+x*k,origin.y+y*k);};
+        auto* draw=ImGui::GetWindowDrawList();
+        draw->AddRectFilled(P(0,0),P(1280,740),IM_COL32(9,13,19,255),12*k);
+        const auto image=TlgPrompts::GuideImageBounds(picture->width,picture->height);
+        draw->AddImage(controller_guide_texture->GetTexRef(),P(image.x,image.y),P(image.x+image.width,image.y+image.height));
+        const auto labels=TlgPrompts::Labels();
+        auto callout=[&](float ax,float ay,float x,float y,const char* name,const std::string& binding) {
+            const auto anchor=P(image.x+ax*image.width,image.y+ay*image.height);
+            const bool right=x>640;
+            const auto edge=P(right?x-12:x+205,y+12);
+            const auto bend=ImVec2(edge.x,anchor.y);
+            draw->AddPolyline(std::array<ImVec2,3>{anchor,bend,edge}.data(),3,IM_COL32(98,153,194,220),0,1.3f*k);
+            draw->AddCircle(anchor,9*k,IM_COL32(126,212,255,255),0,1.8f*k);
+            draw->AddText(ImGui::GetFont(),18*k,P(x,y),IM_COL32(238,245,250,255),name);
+            const std::string text="Key: "+binding;
+            draw->AddText(ImGui::GetFont(),16*k,P(x,y+24),IM_COL32(142,191,220,255),text.c_str());
+        };
+        using namespace TlgPrompts;
+        callout(.244f,.12f,28,20,"L2",labels[L2]);
+        callout(.228f,.20f,28,95,"L1",labels[L1]);
+        callout(.756f,.12f,1040,20,"R2",labels[R2]);
+        callout(.774f,.20f,1040,95,"R1 / Call Trico",labels[R1]);
+        callout(.708f,.34f,1040,175,"Options",labels[Options]);
+        callout(.778f,.40f,1040,255,"Triangle / Grab",labels[Triangle]);
+        callout(.842f,.49f,1040,335,"Circle",labels[Circle]);
+        callout(.711f,.49f,1040,415,"Square",labels[Square]);
+        callout(.778f,.58f,1040,495,"Cross / Jump",labels[Cross]);
+        callout(.22f,.49f,28,255,"D-pad",labels[Up]+" / "+labels[Left]+" / "+labels[Down]+" / "+labels[Right]);
+        callout(.50f,.35f,28,415,"Touchpad L / R",labels[TouchLeft]+" / "+labels[TouchRight]);
+        callout(.355f,.71f,270,655,"Move / Left stick",std::string("WASD; L3 ")+labels[L3]);
+        callout(.641f,.71f,750,655,"Camera / Right stick",std::string("Mouse / arrows; R3 ")+labels[R3]);
+        ImGui::Dummy(ImVec2(1280*k,740*k));
+    }
+    ImGui::End();
+}
+
 void ControlsTab() {
     auto& s = TlgSettings::Get();
+    ImGui::SeparatorText(TL("Button prompts (experimental)", "Ícones de botões (experimental)"));
+    int prompts=s.button_prompts.load();
+    if(ImGui::Combo(TL("Prompt set", "Ícones"),&prompts,
+        "Original (off)\0Auto\0Keyboard / mouse\0PS5 / DualSense\0Xbox\0")) {
+        s.button_prompts=prompts; TlgSettings::Save();
+    }
+    ImGui::TextWrapped("%s",TL("Verified tutorial/controller-guide textures only. Geometry-based menu symbols stay original.",
+                                "Apenas texturas verificadas dos guias. Símbolos geométricos dos menus não mudam."));
+    ImGui::BeginDisabled(!TlgPrompts::DualSensePicture());
+    if(ImGui::Button(TL("Large PS5 controller guide", "Guia grande do controle PS5"))) controller_guide_open=true;
+    ImGui::EndDisabled();
+    ImGui::TextDisabled("%s",TL("Optional local PNG; selected in the launcher. No supplied image is bundled.",
+                                 "PNG local opcional, escolhido no launcher. Nenhuma imagem fornecida é incluída."));
     ImGui::SeparatorText(TL("Mouse", "Mouse"));
     if (BeginRows("##mouse")) {
         CheckRow(TL("Mouse turns the camera", "Mouse gira a câmera"), s.mouse_enabled,
@@ -1395,6 +1465,15 @@ void RetireChoiceTextures() {
 
 // imgui_mutex held, before NewFrame: new pictures become textures, destroyed ones are freed.
 void UpdateChoiceTextures() {
+    if(controller_guide_open && !controller_guide_texture) {
+        if(const auto picture=TlgPrompts::DualSensePicture()) {
+            auto* texture=IM_NEW(ImTextureData)();
+            texture->Create(ImTextureFormat_RGBA32,picture->width,picture->height);
+            std::memcpy(texture->GetPixels(),picture->rgba.data(),picture->rgba.size());
+            ImGui::RegisterUserTexture(texture);
+            controller_guide_texture=texture;
+        }
+    }
     if (!choice_pictures.empty()) {
         choice_textures.assign(choice_pictures.size(), nullptr);
         for (size_t i = 0; i < choice_pictures.size(); ++i) {
@@ -1809,6 +1888,7 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     }
     if (menu_open) {
         Menu();
+        ControllerGuide();
     }
     if (TlgSettings::Get().show_fps && !menu_open) {
         FpsCounter();

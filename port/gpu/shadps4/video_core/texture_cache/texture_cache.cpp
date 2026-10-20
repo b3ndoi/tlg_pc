@@ -1137,17 +1137,62 @@ ImageView& TextureCache::FindDepthTarget(ImageId image_id, const ImageDesc& desc
 }
 
 void TextureCache::RefreshImage(Image& image) {
-    if (False(image.flags & ImageFlagBits::Dirty) || image.info.num_samples > 1) {
+    const bool prompt_changed=image.PromptRefreshNeeded();
+    if ((!prompt_changed && False(image.flags & ImageFlagBits::Dirty)) || image.info.num_samples > 1) {
         return;
+    }
+    // Selection changes alone must never reupload a GPU-owned render/storage resource.
+    if (prompt_changed && True(image.flags & ImageFlagBits::GpuModified)) {
+        std::atomic_ref<u32>(image.prompt_kind).store(0,std::memory_order_release);
+        std::atomic_ref<u64>(image.prompt_generation).store(TlgPrompts::Generation(),std::memory_order_release);
+        if (False(image.flags & ImageFlagBits::Dirty)) return;
     }
     ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                      ReadbackSource::ImageRefresh);
+    const bool had_prompt=image.prompt_kind!=0;
+    bool checked_prompt=false;
+    // Only exact, sampled, single-level BC7 UI textures are eligible. No guest writes,
+    // render-target replacement, timing changes or cache invalidation through protected pages.
+    if((TlgPrompts::Shown()!=TlgPrompts::Original || image.prompt_kind) &&
+       False(image.flags & ImageFlagBits::GpuModified) && image.info.resources.layers==1 &&
+       image.info.resources.levels==1 && image.info.size.depth==1 &&
+       image.info.tile_mode==AmdGpu::TileMode::Thin1DThin &&
+       (image.info.pixel_format==vk::Format::eBc7UnormBlock || image.info.pixel_format==vk::Format::eBc7SrgbBlock)) {
+        checked_prompt=true;
+        const auto kind=TlgPrompts::Identify(image.info.size.width,image.info.size.height,
+            {std::bit_cast<const u8*>(image.info.guest_address),image.info.guest_size});
+        std::atomic_ref<u32>(image.prompt_kind).store(kind,std::memory_order_release);
+        uint64_t epoch=TlgPrompts::Generation();
+        if(const auto replacement=TlgPrompts::Replacement(kind,epoch)) {
+            scheduler.EndRendering();
+            auto& stream=buffer_cache.GetStreamBuffer();
+            const auto offset=stream.Copy(replacement->data(),replacement->size(),16);
+            const vk::BufferImageCopy copy{
+                .bufferOffset=offset,
+                .imageSubresource={.aspectMask=vk::ImageAspectFlagBits::eColor,.mipLevel=0,
+                                   .baseArrayLayer=0,.layerCount=1},
+                .imageExtent={image.info.size.width,image.info.size.height,1}};
+            runtime.UploadImage(&image,&stream,{&copy,1});
+            std::atomic_ref<u64>(image.prompt_generation).store(epoch,std::memory_order_release);
+            return;
+        }
+        // Original/off and unknown payloads fall through to the unchanged guest upload.
+        std::atomic_ref<u64>(image.prompt_generation).store(epoch,std::memory_order_release);
+    } else if(image.prompt_kind) {
+        std::atomic_ref<u32>(image.prompt_kind).store(0,std::memory_order_release);
+    }
+    if (prompt_changed) {
+        if (!checked_prompt)
+            std::atomic_ref<u64>(image.prompt_generation).store(TlgPrompts::Generation(),std::memory_order_release);
+        // An unrelated clean candidate needs no upload after its identity check.
+        if (False(image.flags & ImageFlagBits::Dirty) && !image.prompt_kind && !had_prompt) return;
+    }
     TlgStats::Timer timer{TlgStats::t_refresh};
 
     RENDERER_TRACE;
     TRACE_HINT(fmt::format("{:x}:{:x}", image.info.guest_address, image.info.guest_size));
 
-    if (True(image.flags & ImageFlagBits::MaybeCpuDirty) &&
+    if (!prompt_changed && True(image.flags & ImageFlagBits::MaybeCpuDirty) &&
         False(image.flags & ImageFlagBits::CpuDirty)) {
         // The image size should be less than page size to be considered MaybeCpuDirty
         // So this calculation should be very uncommon and reasonably fast

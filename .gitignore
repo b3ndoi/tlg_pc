@@ -1,6 +1,7 @@
 # Arquivos do jogo (copyright da Sony/genDESIGN): NUNCA versionar
 /dump
 *.psarc
+*.[Gg][Nn][Ff]
 *.bin
 *.prx
 *.sprx

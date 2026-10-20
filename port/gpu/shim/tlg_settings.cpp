@@ -2,6 +2,7 @@
 #include "tlg_settings.h"
 #include "tlg_orbs.h"
 #include "tlg_graphics.h"
+#include "tlg_prompts.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -62,6 +63,10 @@ void Set(Values& v, const std::string& key, const std::string& value) {
             v.cheats[cheat] = i != 0;
             return;
         }
+    }
+    if (key == "button_prompts") {
+        v.button_prompts = TlgPrompts::Parse(value);
+        return;
     }
     if (key == "key_map") {
         v.key_map = value;
@@ -237,6 +242,7 @@ void Load() {
         {"TLG_MOUSE", "mouse_enabled"},              {"TLG_MOUSE_SENS", "mouse_sensitivity"},
         {"TLG_MOUSE_INVERT_Y", "mouse_invert_y"},    {"TLG_MOUSE_SMOOTHING", "mouse_smoothing"},
         {"TLG_MOUSE_ACCEL", "mouse_accel"},          {"TLG_MOUSE_DEADZONE", "mouse_deadzone"},
+        {"TLG_BUTTON_PROMPTS", "button_prompts"},
         {"TLG_SMAA", "smaa"},
         {"TLG_CAS", "cas"},                          {"TLG_COLOR_ADJUST", "color_adjust"},
     };
@@ -366,9 +372,10 @@ void Save() {
                  int(v.restart_unconfirmed.load()));
     std::fprintf(file,
                  "mouse_enabled=%d\nmouse_sensitivity=%.2f\nmouse_invert_y=%d\nmouse_smoothing=%.2f\n"
-                 "mouse_accel=%.2f\nmouse_deadzone=%.2f\nkey_map=%s\n",
+                 "mouse_accel=%.2f\nmouse_deadzone=%.2f\nkey_map=%s\nbutton_prompts=%s\n",
                  int(v.mouse_enabled.load()), v.mouse_sensitivity.load(), int(v.mouse_invert_y.load()),
-                 v.mouse_smoothing.load(), v.mouse_accel.load(), v.mouse_deadzone.load(), v.key_map.c_str());
+                 v.mouse_smoothing.load(), v.mouse_accel.load(), v.mouse_deadzone.load(), v.key_map.c_str(),
+                 TlgPrompts::Keys[std::clamp(v.button_prompts.load(),0,int(TlgPrompts::ModeCount)-1)]);
     std::fprintf(file,
                  "smaa=%d\ncas=%d\ncas_strength=%d\ncolor_adjust=%d\ncolor_brightness=%.2f\n"
                  "color_contrast=%.2f\ncolor_saturation=%.2f\ncolor_gamma=%.2f\n",

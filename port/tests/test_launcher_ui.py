@@ -145,6 +145,40 @@ class LauncherUITests(unittest.TestCase):
         self.app.refresh_status()
         self.assertFalse(self.app.play_button.instate(['disabled']))
 
+    def test_prompt_choices_persist_without_launch_or_live_config_write(self):
+        self.assertEqual(len(self.app.prompt_box['values']), 5)
+        self.assertEqual(self.app.prompt_box.current(), 0)
+        for index,mode in enumerate(('original','auto','keyboard','ps5','xbox')):
+            self.app.prompt_box.current(index)
+            self.app.prompt_box.event_generate('<<ComboboxSelected>>')
+            self.window.update_idletasks()
+            self.assertEqual(self.app.settings['button_prompts'], mode)
+            self.assertEqual(self.app.settings['frame_rate'], '30')
+        self.assertEqual(tlg_run.save_settings.call_count, 5)
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
+
+    def test_busy_prompt_override_is_ignored(self):
+        self.app.busy = True
+        self.app.prompt_box.current(4)
+        self.app.prompt_box.event_generate('<<ComboboxSelected>>')
+        self.window.update_idletasks()
+        self.assertEqual(self.app.settings['button_prompts'], 'original')
+        tlg_run.save_settings.assert_not_called()
+
+    def test_local_prompt_image_picker_does_not_copy_upload_or_launch(self):
+        image=self.folder/'synthetic.png'
+        image.write_bytes(b'Synthetic test fixture, not artwork')
+        with patch.object(ui.filedialog,'askopenfilename',return_value=str(image)):
+            self.app.choose_prompt_image()
+        self.assertEqual(self.app.settings['ps5_prompt_image'],str(image))
+        self.assertEqual(self.app.prompt_image_name['text'],'synthetic.png')
+        self.assertEqual(image.read_bytes(),b'Synthetic test fixture, not artwork')
+        self.assertEqual(self.app.settings['button_prompts'],'original')
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
+        self.assertFalse(self.user.exists())
+
     def test_grid_shows_locked_trophies_without_leaking_hidden_text_or_icon(self):
         folder = self.game / 'sce_sys/trophy'
         folder.mkdir()

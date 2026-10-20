@@ -13,6 +13,7 @@
 #include "tlg_graphics.h"
 #include "tlg_settings.h"
 #include "tlg_frame_context.h"
+#include "tlg_prompts.h"
 #include "../tlggpu.h"
 
 namespace {
@@ -21,6 +22,11 @@ TlgGpuMouse mouse_state{}; // window thread adds, the pad (runtime_pad.c) takes
 
 u32 MouseBit(u8 button) {
     return button >= 1 && button <= 32 ? 1u << (button - 1) : 0;
+}
+TlgPrompts::Mode PromptPad(SDL_JoystickID id) {
+    const auto type=SDL_GetGamepadTypeForID(id);
+    return type==SDL_GAMEPAD_TYPE_PS5 || type==SDL_GAMEPAD_TYPE_PS4 || type==SDL_GAMEPAD_TYPE_PS3
+        ? TlgPrompts::DualSense : TlgPrompts::Xbox;
 }
 } // namespace
 
@@ -299,6 +305,23 @@ void WindowSDL::UpdateTextTitle() {
 }
 
 bool WindowSDL::PollEvents() {
+    const auto prompt_mode=TlgPrompts::Mode(TlgSettings::Get().button_prompts.load());
+    static int previous_prompt_mode=-1;
+    if(previous_prompt_mode!=prompt_mode) {
+        previous_prompt_mode=prompt_mode;
+        TlgPrompts::SetMode(prompt_mode);
+        if(prompt_mode!=TlgPrompts::Original) {
+            static bool tried_picture=false;
+            if(!tried_picture) {
+                tried_picture=true;
+                TlgPrompts::LoadDualSensePicture(std::getenv("TLG_PS5_PROMPT_IMAGE"));
+            }
+            int count=0;
+            auto* ids=SDL_GetGamepads(&count);
+            for(int i=0;ids && i<count;++i) TlgPrompts::Connected(ids[i],PromptPad(ids[i]));
+            SDL_free(ids);
+        }
+    }
     {
         std::scoped_lock lock{text_mutex};
         if (text_requested) { // SDL text input must be toggled from the window thread
@@ -320,6 +343,35 @@ bool WindowSDL::PollEvents() {
     }
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        // Observe, never consume or synthesize gameplay input. Drift and releases do not switch.
+        if(prompt_mode!=TlgPrompts::Original) {
+        const uint64_t prompt_now=SDL_GetTicksNS()/1000;
+        switch(event.type) {
+        case SDL_EVENT_GAMEPAD_ADDED:
+            TlgPrompts::Connected(event.gdevice.which,PromptPad(event.gdevice.which)); break;
+        case SDL_EVENT_GAMEPAD_REMOVED:
+            TlgPrompts::Disconnected(event.gdevice.which); break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            if(focused) TlgPrompts::Input(PromptPad(event.gbutton.which),event.gbutton.which,prompt_now); break;
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            if(focused && std::abs(int(event.gaxis.value))>16000)
+                TlgPrompts::Input(PromptPad(event.gaxis.which),event.gaxis.which,prompt_now);
+            break;
+        case SDL_EVENT_KEY_DOWN:
+            if(focused && !event.key.repeat && event.key.key!=SDLK_INSERT && event.key.key!=SDLK_ESCAPE)
+                TlgPrompts::Input(TlgPrompts::Keyboard,0,prompt_now);
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_WHEEL:
+            if(mouse_captured) TlgPrompts::Input(TlgPrompts::Keyboard,0,prompt_now);
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if(mouse_captured && std::abs(event.motion.xrel)+std::abs(event.motion.yrel)>=2)
+                TlgPrompts::Input(TlgPrompts::Keyboard,0,prompt_now);
+            break;
+        default: break;
+        }
+        }
         if (text_active && (event.type == SDL_EVENT_TEXT_INPUT || event.type == SDL_EVENT_KEY_DOWN)) {
             std::scoped_lock lock{text_mutex};
             if (event.type == SDL_EVENT_TEXT_INPUT) {

@@ -19,6 +19,7 @@ void tlggpu_mouse_take(TlgGpuMouse *m) {
 }
 static TlgGpuInputSettings test_input={1,0,1.0f,0.0f,0.0f,0.1f,""};
 void tlggpu_input_settings(TlgGpuInputSettings *s) { *s=test_input; }
+void tlggpu_prompts_bindings(const char *const *labels,int count,int custom) { (void)labels;(void)count;(void)custom; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

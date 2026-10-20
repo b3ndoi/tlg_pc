@@ -15,6 +15,8 @@ class ReleaseDefaults(unittest.TestCase):
     def test_30_is_still_default(self):
         self.assertEqual(tlg_run.DEFAULT_SETTINGS['frame_rate'], '30')
         self.assertEqual(tlg_patches.MODES['30'], [])
+        self.assertEqual(tlg_run.DEFAULT_SETTINGS['button_prompts'], 'original')
+        self.assertNotIn('TLG_BUTTON_PROMPTS', tlg_run.DEFAULT_ENV)
 
     def test_60_environment_is_not_enabled_by_default(self):
         switches = {'TLG_TIMING_60', 'TLG_INPUT_TIMING_60', 'TLG_CLOCK_SYNC_60',

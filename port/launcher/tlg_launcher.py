@@ -301,6 +301,26 @@ class Launcher:
         ttk.Button(page, text=self.t('remap'), command=self.remap_dialog).grid(row=3, column=0, sticky='w', pady=12)
         ttk.Label(page, text=self.t('mouse_hint'), style='Muted.TLabel', wraplength=860).grid(
             row=4, column=0, columnspan=3, sticky='w')
+        self.prompt_box = self.combo(page, 5, 'button_prompts',
+            ['original', 'auto', 'keyboard', 'ps5', 'xbox'], lambda mode: self.t('prompts_' + mode))
+        ttk.Label(page, text=self.t('prompts_hint'), style='Muted.TLabel', wraplength=860).grid(
+            row=6, column=0, columnspan=3, sticky='w', pady=8)
+        ttk.Button(page,text=self.t('ps5_prompt_image'),command=self.choose_prompt_image).grid(
+            row=7,column=0,sticky='w',pady=8)
+        image=tlg_run.prompt_image(self.settings)
+        self.prompt_image_name=ttk.Label(page,text=image.name if image else self.t('prompts_no_image'),
+                                         style='Muted.TLabel')
+        self.prompt_image_name.grid(row=7,column=1,sticky='w',padx=6)
+
+    def choose_prompt_image(self):
+        if self.busy:
+            return
+        name=filedialog.askopenfilename(title=self.t('ps5_prompt_image'),filetypes=[('PNG','*.png')])
+        if not name:
+            return
+        self.settings['ps5_prompt_image']=name
+        tlg_run.save_settings(self.settings)
+        self.prompt_image_name.configure(text=Path(name).name)
 
     def build_achievements(self, page):
         page.columnconfigure(0, weight=1)
