@@ -118,6 +118,31 @@ class LauncherUITests(unittest.TestCase):
         self.assertIn(self.app.settings['game_language'], self.app.game_lang_values)
         tlg_run.save_settings.assert_not_called()
 
+    def test_serbian_latin_rebuild_is_read_only_and_keeps_30fps(self):
+        self.app.settings['ui_language'] = 'sr_Latn_RS'
+        self.app.build()
+        self.window.update_idletasks()
+        self.assertIn('Dostignuća', [self.app.notebook.tab(tab, 'text') for tab in self.app.notebook.tabs()])
+        self.assertEqual(self.app.t('set'), 'Postavi')
+        self.assertEqual(self.app.settings['frame_rate'], '30')
+        self.assertEqual(self.window.state(), 'withdrawn')
+        tlg_run.save_settings.assert_not_called()
+
+    def test_translation_picker_is_next_launch_only_and_locked_while_busy(self):
+        pack = self.folder/'čćžšđ.tlgtrn'
+        with patch.object(ui.filedialog, 'askopenfilename', return_value=str(pack)) as picker:
+            self.app.busy = True
+            self.app.choose_translation_pack()
+            picker.assert_not_called()
+            self.app.busy = False
+            self.app.choose_translation_pack()
+        self.assertEqual(self.app.settings['translation_pack'], str(pack))
+        self.assertEqual(self.app.settings['frame_rate'], '30')
+        self.app.clear_translation_pack()
+        self.assertEqual(self.app.settings['translation_pack'], '')
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
+
     def test_saved_achievements_are_visible_and_duplicate_messages_do_not_rewrite(self):
         store = achievements.Store(self.user, 'CUSA03745')
         event = store.unlock(12)

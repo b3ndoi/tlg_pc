@@ -2,6 +2,10 @@
 /dump
 *.psarc
 *.[Gg][Nn][Ff]
+# Locally compiled translations/previews, never source-controlled game assets.
+*.tlgtrn
+translation-preview/
+.venv-translation/
 *.bin
 *.prx
 *.sprx

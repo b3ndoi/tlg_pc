@@ -48,7 +48,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 cmake ninja-build pkg-config nasm \
-            curl git python3-venv python3-tk xvfb xauth libvulkan-dev glslang-tools libboost-dev \
+            curl git python3-venv python3-tk python3-pil xvfb xauth libvulkan-dev glslang-tools libboost-dev \
             libxxhash-dev zlib1g-dev libx11-dev libxcb1-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
             libdecor-0-dev libegl-dev libgl-dev libdrm-dev libgbm-dev libpulse-dev libasound2-dev \
@@ -111,7 +111,9 @@ jobs:
       - name: CPU-only release regressions (no game assets)
         env:
           WINPYTHON_WIN: ${{ steps.python.outputs.python-path }}
-        run: '"$(cygpath -u "$WINPYTHON_WIN")" tests/run_release_regressions.py'
+        run: |
+          "$(cygpath -u "$WINPYTHON_WIN")" -m pip install -r requirements-translation.txt
+          "$(cygpath -u "$WINPYTHON_WIN")" tests/run_release_regressions.py
       - name: Build
         env:
           MSYS2_ROOT: ${{ runner.temp }}/msys64

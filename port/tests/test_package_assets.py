@@ -26,7 +26,8 @@ class PackageAssetsTests(unittest.TestCase):
         paths = ['trophies/ICON0.PNG', 'trophy/other.png', 'private-copy/TROP000.PNG',
                  'private-copy/trophy_025.png', 'private-copy/TROPHY00.TRP',
                  'private-copy/trophy_001.esfm', 'private-copy/TROPCONF.XML',
-                 'private-copy/TROP_01.XML', 'private-copy/controller.GNF']
+                 'private-copy/TROP_01.XML', 'private-copy/controller.GNF',
+                 'private-copy/test.tlgtrn']
         for path in paths:
             with self.subTest(path=path):
                 result = subprocess.run(['git', 'check-ignore', '-q', '--', path], cwd=REPO,
@@ -55,7 +56,7 @@ class PackageAssetsTests(unittest.TestCase):
 
             self.assertEqual(check().returncode, 0)
             for name in ['TROP000.PNG', 'trophy_025.png', 'TROPCONF.XML', 'TROP_01.XML',
-                         'TROPHY00.TRP', 'trophy_001.esfm', 'ICON0.PNG','controller.GNF']:
+                         'TROPHY00.TRP', 'trophy_001.esfm', 'ICON0.PNG','controller.GNF','test.tlgtrn']:
                 with self.subTest(name=name):
                     fixture = root / name
                     fixture.write_bytes(b'Synthetic fixture, not game data')

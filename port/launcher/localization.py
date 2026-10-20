@@ -7,10 +7,11 @@ from pathlib import Path
 import re
 
 LOCALES = Path(__file__).resolve().parent / 'locales'
+LOCALE_PATTERN = r'[a-z]{2,3}(?:_[A-Z][a-z]{3})?_[A-Z]{2}'
 
 
 def load_catalog(language, folder=LOCALES):
-    if not isinstance(language, str) or not re.fullmatch(r'[a-z]{2,3}_[A-Z]{2}', language):
+    if not isinstance(language, str) or not re.fullmatch(LOCALE_PATTERN, language):
         return {}
     try:
         with (Path(folder) / (language + '.json')).open(encoding='utf-8') as source:
@@ -24,7 +25,7 @@ def load_catalog(language, folder=LOCALES):
 
 
 CATALOGS = {path.stem: load_catalog(path.stem) for path in sorted(LOCALES.glob('*.json'))
-            if re.fullmatch(r'[a-z]{2,3}_[A-Z]{2}', path.stem)}
+            if re.fullmatch(LOCALE_PATTERN, path.stem)}
 ENGLISH = CATALOGS.get('en_US', {})
 NAMES = {key: values.get('_language_name', key) for key, values in CATALOGS.items()}
 

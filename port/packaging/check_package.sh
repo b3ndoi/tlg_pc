@@ -5,7 +5,7 @@ set -euo pipefail
 dest=$1
 forbidden=$(find "$dest" \( -iname eboot.bin -o -iname sce_module -o -iname sce_sys -o -iname savedata \
     -o -iname '*.psarc' -o -iname '*.gnf' -o -iname '*.sprx' -o -iname '*.prx' -o -iname '*.pkg' -o -iname '*.sfo' \
-    -o -iname '*.trp' -o -iname '*.esfm' -o -iname 'trop*.png' -o -iname 'trop*.xml' \
+    -o -iname '*.trp' -o -iname '*.esfm' -o -iname 'trop*.png' -o -iname 'trop*.xml' -o -iname '*.tlgtrn' \
     -o -iname trophy -o -iname trophies \
     -o -iname icon0.png -o -iname 'pic0.png' -o -iname 'pic1.png' -o -iname 'playgo-chunk*' \
     -o -iname boot-linked.bin -o -iname content.bin -o -iname tlg.ini -o -iname settings.json \

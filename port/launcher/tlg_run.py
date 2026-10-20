@@ -96,6 +96,7 @@ DEFAULT_SETTINGS = {
     'trophy_show_unknown_icons': False,  # explicit spoiler opt-in; never changes unlock state
     'button_prompts': 'original',  # optional host-only artwork; no input/timing patches
     'ps5_prompt_image': '',        # optional local art, never bundled with the port
+    'translation_pack': '',        # optional locally compiled tutorial text; original/off by default
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
@@ -450,6 +451,12 @@ def prompt_image(settings):
         return None
 
 
+def translation_pack(settings):
+    """Validate saved text without touching the pack or a running session."""
+    value = settings.get('translation_pack', '')
+    return value if isinstance(value, str) and len(value) <= 32767 and '\0' not in value else ''
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
@@ -459,6 +466,9 @@ def build_env(settings, extra=None):
         game_languages(settings.get('game_dir')).get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
+    # Independent of UI/voice language and FPS; only exact English textures match.
+    if pack := translation_pack(settings):
+        env.setdefault('TLG_TRANSLATION_PACK', pack)
     if settings.get('button_prompts','original') in ('auto','ps5'):
         image=prompt_image(settings)
         if image:

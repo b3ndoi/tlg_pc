@@ -6,6 +6,7 @@
 
 #include "tlg_toggles.h"
 #include "tlg_freeze.h"
+#include "tlg_translations.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -1149,6 +1150,28 @@ void TextureCache::RefreshImage(Image& image) {
     }
     ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                      ReadbackSource::ImageRefresh);
+    // Opt-in original fan text: exact input fingerprint, host upload only. No
+    // modification of guest pixels, BOD layouts, subtitle clocks or GPU-owned images.
+    if (TlgTranslations::Active() && False(image.flags & ImageFlagBits::GpuModified) &&
+        image.info.resources.layers == 1 && image.info.resources.levels == 1 &&
+        image.info.size.depth == 1 && image.info.tile_mode == AmdGpu::TileMode::Thin1DThin &&
+        (image.info.pixel_format == vk::Format::eBc7UnormBlock ||
+         image.info.pixel_format == vk::Format::eBc7SrgbBlock)) {
+        if (const auto* pixels = TlgTranslations::Replacement(image.info.size.width,
+                image.info.size.height,
+                {std::bit_cast<const u8*>(image.info.guest_address), image.info.guest_size})) {
+            scheduler.EndRendering();
+            auto& stream = buffer_cache.GetStreamBuffer();
+            const auto offset = stream.Copy(pixels->data(), pixels->size(), 16);
+            const vk::BufferImageCopy copy{
+                .bufferOffset = offset,
+                .imageSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = 0,
+                                    .baseArrayLayer = 0, .layerCount = 1},
+                .imageExtent = {image.info.size.width, image.info.size.height, 1}};
+            runtime.UploadImage(&image, &stream, {&copy, 1});
+            return;
+        }
+    }
     const bool had_prompt=image.prompt_kind!=0;
     bool checked_prompt=false;
     // Only exact, sampled, single-level BC7 UI textures are eligible. No guest writes,

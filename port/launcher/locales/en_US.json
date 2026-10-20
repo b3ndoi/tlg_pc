@@ -1,5 +1,8 @@
 {
   "_language_name": "English (US)",
+  "translation_pack": "Local tutorial translation pack…",
+  "translation_original": "Original game text (off)",
+  "translation_hint": "Optional fan translation of 72 common tutorials only. Select English as the game language. Story subtitles, menus and voices are not translated. Compile a UTF-8 catalog as described in docs/TRANSLATING.md; applies on the next launch.",
   "action_cross": "jump",
   "action_triangle": "grab, hold on",
   "action_r1": "call Trico",

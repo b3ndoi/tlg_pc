@@ -28,7 +28,7 @@ dest=out/stage/$name
 rm -rf -- out/stage
 mkdir -p "$dest/out/gpu" "$dest/out/lib" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
-for language in en_US pt_BR; do
+for language in en_US pt_BR sr_Latn_RS; do
     [[ -s "$dest/_internal/locales/$language.json" ]] || { echo "Missing launcher catalog: $language" >&2; exit 1; }
 done
 cp launcher/tlg.png "$dest/launcher/"
@@ -46,6 +46,11 @@ ldd out/tlg-probe out/gpu/libtlggpu.so | awk '/=> \// {print $1, $3}' | sort -u 
 done
 # SDL3 loads its video/audio backends at run time from the player's system: nothing else to copy.
 cp -r scripts "$dest/"
+cp -r translations "$dest/"
+mkdir -p "$dest/translations/fonts" "$dest/docs"
+cp gpu/third_party/fonts/DejaVuSans.ttf gpu/third_party/fonts/LICENSE-DejaVu.txt "$dest/translations/fonts/"
+cp requirements-translation.txt "$dest/"
+cp ../docs/TRANSLATING.md "$dest/docs/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
 cp packaging/linux/install_desktop.sh "$dest/"

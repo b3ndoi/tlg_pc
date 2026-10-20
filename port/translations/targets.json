@@ -1,0 +1,608 @@
+{
+  "schema": 1,
+  "profile": "EU-01.00-English-tutorials",
+  "targets": {
+    "aim_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "81b99a311c5a6058a8763e0d002b4abb",
+      "lines": 2,
+      "tokens": [
+        "circle"
+      ]
+    },
+    "aim": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "b4b915d774399a443522e869b6e6b2ef",
+      "lines": 1,
+      "tokens": []
+    },
+    "attack": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ff020e91108a957b4af208c30897ac41",
+      "lines": 1,
+      "tokens": []
+    },
+    "attack_sol": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "612a06e21a976f3d1a39eb53cec2b6a4",
+      "lines": 1,
+      "tokens": []
+    },
+    "auto_jump": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "f5ed862aad1a52c33fe70a78e422f25e",
+      "lines": 1,
+      "tokens": []
+    },
+    "backjump": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "32f94fc8e2c92043e4b9937ddf34b619",
+      "lines": 1,
+      "tokens": []
+    },
+    "call": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "bd2212fad7c552d6486962d3bffd4b85",
+      "lines": 1,
+      "tokens": []
+    },
+    "camera": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "3f8d2a3bf00c5d12b1230cbbea913fb5",
+      "lines": 1,
+      "tokens": []
+    },
+    "caress_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "6d071d6f085b5423f5f567b12816f37c",
+      "lines": 2,
+      "tokens": [
+        "circle"
+      ]
+    },
+    "caress_detail_grip": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ea105d5daf6a2bef4dd9fe1b036c34ee",
+      "lines": 2,
+      "tokens": [
+        "circle"
+      ]
+    },
+    "caress": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "13a84cec91d64ced57dfe0f9341592ae",
+      "lines": 1,
+      "tokens": []
+    },
+    "catch": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ec4b5dd971854e6ddf19a7a8018d819b",
+      "lines": 1,
+      "tokens": []
+    },
+    "climb": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "4da2cf4107bbb5dc4733074618ce421e",
+      "lines": 1,
+      "tokens": []
+    },
+    "dash": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "69075e6bc24928aa213d27e8eada7b41",
+      "lines": 1,
+      "tokens": []
+    },
+    "diveing_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "75cd0450f59c59fdbbd7bc9e852e14a7",
+      "lines": 2,
+      "tokens": [
+        "cross",
+        "triangle"
+      ]
+    },
+    "diveing": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "84be31b8748c3661cea61f2ba1e6291c",
+      "lines": 1,
+      "tokens": []
+    },
+    "down": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "f0d14cfb8db1ac7622e176ce14595d4e",
+      "lines": 1,
+      "tokens": []
+    },
+    "edge_jump": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "50138e9c3d43a112dbebff0e2e6032e6",
+      "lines": 1,
+      "tokens": []
+    },
+    "equip": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ccd3000ae456aa3d6a59bab8ea13f1e5",
+      "lines": 1,
+      "tokens": []
+    },
+    "escapesoldier": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "1653cc5f11098a2337172f78d5f5a089",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesture_attack": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "a35565ee490ede613080cd81ec74a127",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesture_cancel": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "f05afa045cae0c2b53bcade98040b829",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesture_instruct": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "207c8d5c79a904cfbcac371f33294785",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesture_jump_detail1": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "a49eaf4bdb803a89a54fede32c30d15a",
+      "lines": 2,
+      "tokens": [
+        "r1",
+        "triangle"
+      ]
+    },
+    "gesture_jump": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "bbaf525f5c409da465914397713f2139",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesture_move": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "9af8773944b9708f2baca715008122cc",
+      "lines": 1,
+      "tokens": []
+    },
+    "gesuture_detail1": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "3c112bed79f27bece6ba142c8e02b75a",
+      "lines": 2,
+      "tokens": [
+        "r1"
+      ]
+    },
+    "gesuture": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "602bbe3bbad814a371263de42707f42d",
+      "lines": 1,
+      "tokens": []
+    },
+    "getpot": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "167280a78c637ce581dcab45f4880ac8",
+      "lines": 1,
+      "tokens": []
+    },
+    "gripcondor": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "d7d0dd3a73cbc9021770e6bfbc255c47",
+      "lines": 1,
+      "tokens": []
+    },
+    "hang": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "50138e9c3d43a112dbebff0e2e6032e6",
+      "lines": 1,
+      "tokens": []
+    },
+    "hold_circle": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "d387497aabb2b4b7bc10a0525b5d12bb",
+      "lines": 1,
+      "tokens": [
+        "circle"
+      ]
+    },
+    "instruction": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "a1de35bf848d5dd29003347be134dc62",
+      "lines": 1,
+      "tokens": []
+    },
+    "item_feed": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "4df854ff7a05435a3829fe0ad7a0b050",
+      "lines": 1,
+      "tokens": []
+    },
+    "item_get": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "c0578aea672d8a7f649679afed67b902",
+      "lines": 1,
+      "tokens": []
+    },
+    "item_lift": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "c0578aea672d8a7f649679afed67b902",
+      "lines": 1,
+      "tokens": []
+    },
+    "item_throw": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "f51f92f37a0f031fa9c6c5ddb5c896a3",
+      "lines": 1,
+      "tokens": []
+    },
+    "jumpcondor_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "4aaf1cb2ac08b289d275f3f0b04b2863",
+      "lines": 2,
+      "tokens": [
+        "triangle"
+      ]
+    },
+    "jump_chain_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ab188470049a487779af34877877668c",
+      "lines": 1,
+      "tokens": [
+        "triangle"
+      ]
+    },
+    "jump_chain": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "718d806352c9ef17f48332d57d610b6c",
+      "lines": 1,
+      "tokens": []
+    },
+    "jump_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "c65cdd4806b38415fb754eb7831f08d9",
+      "lines": 2,
+      "tokens": [
+        "triangle"
+      ]
+    },
+    "jump_edge_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "84ff72fb58e8a6e93c7664ed9619cb3e",
+      "lines": 2,
+      "tokens": [
+        "triangle"
+      ]
+    },
+    "jump_edge": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "718d806352c9ef17f48332d57d610b6c",
+      "lines": 1,
+      "tokens": []
+    },
+    "jump": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "718d806352c9ef17f48332d57d610b6c",
+      "lines": 1,
+      "tokens": []
+    },
+    "jump_wallhang_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "f4ae1f57d55b03c6ec0ba80716ae9de5",
+      "lines": 2,
+      "tokens": [
+        "triangle"
+      ]
+    },
+    "jump_wallhang": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "718d806352c9ef17f48332d57d610b6c",
+      "lines": 1,
+      "tokens": []
+    },
+    "ledgeclimb": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "6ce2b56f59a375e0b46447c49147cab8",
+      "lines": 1,
+      "tokens": []
+    },
+    "lever_handle": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "bee826bf771fc3a3cef5bbecc264c07e",
+      "lines": 1,
+      "tokens": []
+    },
+    "lookcondor": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "3cd90b621df9c7d71716d27a7c600bd2",
+      "lines": 1,
+      "tokens": []
+    },
+    "meditate_detail": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "ca6d9cc7b3d6c4a3453a8d8660f3e744",
+      "lines": 1,
+      "tokens": []
+    },
+    "meditate": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "6bbaf51711e88e3d55f37eca45febd2c",
+      "lines": 1,
+      "tokens": []
+    },
+    "moveladder": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "14f360d5f0cff2ed6b90be467c825d5a",
+      "lines": 1,
+      "tokens": []
+    },
+    "move_climb": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "17c2862e72abde6635f0f0932df1b74b",
+      "lines": 1,
+      "tokens": []
+    },
+    "move": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "66709b820475d4d4d9091109bfb65056",
+      "lines": 1,
+      "tokens": []
+    },
+    "narrow_crouch": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "02a62772057f1628c6c8e4d067e0b94d",
+      "lines": 1,
+      "tokens": []
+    },
+    "onto": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "127949bf4289f249c598a9ee65f5562d",
+      "lines": 1,
+      "tokens": []
+    },
+    "pothook": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "8b8e32e6c2ece112c8998c26bdc52e46",
+      "lines": 1,
+      "tokens": []
+    },
+    "pullspear": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "464b725c02f0607cfce48954a648d00e",
+      "lines": 1,
+      "tokens": []
+    },
+    "pull": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "43505759eff7281f6ddea501e21f9cff",
+      "lines": 1,
+      "tokens": []
+    },
+    "pushandpull": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "134b7336bc97143147cbf324991cf886",
+      "lines": 1,
+      "tokens": []
+    },
+    "push": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "785bdae542e67539ca4fc31c1782c6e4",
+      "lines": 1,
+      "tokens": []
+    },
+    "put": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "626f08c4d09501561d320d5f836815f3",
+      "lines": 1,
+      "tokens": []
+    },
+    "release": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "e348550986ff6b427d0eef6e1e7528e3",
+      "lines": 1,
+      "tokens": []
+    },
+    "run_attack": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "86bf60abc5d2b5874c5082c943b5e409",
+      "lines": 1,
+      "tokens": []
+    },
+    "run_up": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "8238e2c801b749c0a54043c890baf603",
+      "lines": 1,
+      "tokens": []
+    },
+    "spray": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "d6ea6cb2b1797c08c76a57f7084fc9ee",
+      "lines": 1,
+      "tokens": []
+    },
+    "start": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "eb5af4d91037d1c70c1803699559e071",
+      "lines": 1,
+      "tokens": []
+    },
+    "swim_fast": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "6282fcee26a1ba069dc97951c28eef4c",
+      "lines": 1,
+      "tokens": []
+    },
+    "take": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "e509bf6a3e0e471884a14e943864cb6f",
+      "lines": 1,
+      "tokens": []
+    },
+    "throwin": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "07d24ac690bc6a294c0e2a114a5403a5",
+      "lines": 1,
+      "tokens": []
+    },
+    "unplug": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "43505759eff7281f6ddea501e21f9cff",
+      "lines": 1,
+      "tokens": []
+    },
+    "usemirror": {
+      "width": 512,
+      "height": 128,
+      "source_bytes": 65536,
+      "xxh128": "76d2766c95e22093fcef0ddb835b5ef7",
+      "lines": 1,
+      "tokens": []
+    }
+  }
+}
