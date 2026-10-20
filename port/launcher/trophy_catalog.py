@@ -2,7 +2,7 @@
 """Read only the owner's trophy catalog; no game assets or keys are bundled.
 
 TRP layout reference: shadPS4 src/core/file_format/trp.h (GPL-2.0-or-later).
-Encrypted ESFM is deliberately not guessed. Unknown entries stay masked.
+Encrypted ESFM is deliberately not guessed. Unknown entries stay masked by default.
 """
 from pathlib import Path
 import re
@@ -158,10 +158,12 @@ class Catalog:
                     return png_checked(bounded(path, MAX_ICON))
         return None
 
-    def view(self, trophy_id, unlocked=False):
+    def view(self, trophy_id, unlocked=False, show_unknown_icons=False):
         entry = self.trophies[trophy_id]
         masked = not entry['known'] or entry['hidden'] and not unlocked
-        # Hidden names/descriptions/icons do not reach widget text or tooltips.
+        # Explicit spoiler opt-in reveals only artwork whose hidden flag is unknown.
+        # It never invents metadata/unlocks or overrides a known hidden flag.
+        show_icon = not masked or (show_unknown_icons and not entry['known'])
         return dict(id=trophy_id, masked=masked, unlocked=unlocked,
                     name='' if masked else entry['name'], detail='' if masked else entry['detail'],
-                    grade='' if masked else entry['grade'], icon=None if masked else self.icon(trophy_id))
+                    grade='' if masked else entry['grade'], icon=self.icon(trophy_id) if show_icon else None)

@@ -69,6 +69,19 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(catalog.view(1, True)['name'], 'SECRET NAME')
         self.assertEqual(catalog.view(1, True)['icon'], ICON)
 
+    def test_unknown_icon_spoiler_opt_in_does_not_invent_metadata_or_unlock(self):
+        catalog = c.Catalog(self.game)
+        view = catalog.view(1, show_unknown_icons=True)
+        self.assertEqual(view['icon'], ICON)
+        self.assertTrue(view['masked'])
+        self.assertFalse(view['unlocked'])
+        self.assertEqual((view['name'], view['detail'], view['grade']), ('', '', ''))
+        self.assertFalse(catalog.complete)
+        self.assertIsNone(catalog.view(1)['icon'])
+        (self.metadata / 'TROP.XML').write_bytes(XML)
+        catalog = c.Catalog(self.game, self.metadata)
+        self.assertIsNone(catalog.view(1, show_unknown_icons=True)['icon'])
+
     def test_bad_xml_never_loads(self):
         for data in (XML.replace(b'id="1"', b'id="0"'), XML.replace(b'hidden="yes"', b'hidden="maybe"'),
                      XML.replace(b'id="1"', b'id="128"'), XML.replace(b'ttype="B"', b'ttype="X"'),

@@ -8,6 +8,9 @@
   sessions, with deduplication, atomic storage and optional Windows notifications.
   Add a responsive trophy grid with owner-supplied names/icons, hidden-entry
   masking and bounded TRP/XML parsing. No game artwork or keys are bundled.
+- Offer an explicit spoiler opt-in for icons whose hidden status is unknown;
+  names/unlocks are not invented, and known hidden trophies remain masked.
+  Exclude extracted trophy assets from Git and reject them during packaging.
 - Add opt-in native persistent trophy flags/timestamps for the experimental
   60-FPS tracking path, with deduplication, user/title isolation and atomic
   state bridging. Default/30-FPS behavior and gameplay timing stay unchanged.

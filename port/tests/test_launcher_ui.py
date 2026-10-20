@@ -178,6 +178,7 @@ class LauncherUITests(unittest.TestCase):
         tlg_run.save_settings.assert_not_called()
 
     def test_preparation_uses_snapshot_and_quit_prevents_later_launch(self):
+        self.assertFalse(self.app.settings['trophy_show_unknown_icons'])
         with patch.object(ui.threading, 'Thread') as thread:
             self.app.play()
             self.assertTrue(self.app.busy)
@@ -192,6 +193,24 @@ class LauncherUITests(unittest.TestCase):
         with patch.object(tlg_run, 'prepare'), patch.object(tlg_run, 'launch') as launch:
             self.app.run_game(snapshot)
             launch.assert_not_called()
+
+    def test_icon_opt_in_shows_artwork_without_claiming_unlocks_and_can_be_disabled(self):
+        folder = self.game / 'sce_sys/trophy'
+        folder.mkdir()
+        (folder / 'trophy00.trp').write_bytes(trp([('TROP000.PNG', ICON, 0), ('TROP001.PNG', ICON, 0)]))
+        self.app.vars['trophy_show_unknown_icons'].set(True)
+        self.app.trophy_icons_changed()
+        self.assertEqual(len(self.app.achievement_images), 2)
+        self.assertIn('Icons shown by request', self.app.achievement_summary['text'])
+        for view in self.app.achievement_views.values():
+            self.assertTrue(view['masked'])
+            self.assertFalse(view['unlocked'])
+            self.assertEqual(view['name'], '')
+        self.assertFalse(self.user.exists())
+        self.app.vars['trophy_show_unknown_icons'].set(False)
+        self.app.trophy_icons_changed()
+        self.assertEqual(len(self.app.achievement_images), 0)
+        self.assertFalse(self.app.settings['trophy_show_unknown_icons'])
 
     def test_quit_requires_confirmation_before_stopping_own_child(self):
         self.app.busy = True

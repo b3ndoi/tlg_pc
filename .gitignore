@@ -50,3 +50,11 @@ preparation.json
 /system_lib/
 /save-snapshot/
 /verification/
+
+# Owner-extracted trophy assets/metadata must stay local, never in Git or releases.
+[Tt][Rr][Oo][Pp][Hh][Yy]/
+[Tt][Rr][Oo][Pp][Hh][Ii][Ee][Ss]/
+*.[Tt][Rr][Pp]
+*.[Ee][Ss][Ff][Mm]
+[Tt][Rr][Oo][Pp]*.[Pp][Nn][Gg]
+[Tt][Rr][Oo][Pp]*.[Xx][Mm][Ll]

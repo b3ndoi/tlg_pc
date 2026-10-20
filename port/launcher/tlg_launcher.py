@@ -340,6 +340,16 @@ class Launcher:
         actions.grid(row=7, column=0, sticky='ew')
         ttk.Button(actions, text=self.t('refresh'), command=self.refresh_achievements).pack(side='left')
         ttk.Button(actions, text=self.t('trophy_metadata'), command=self.choose_trophy_metadata).pack(side='left', padx=8)
+        show_icons = tk.BooleanVar(value=self.settings.get('trophy_show_unknown_icons', False))
+        self.vars['trophy_show_unknown_icons'] = show_icons
+        ttk.Checkbutton(actions, text=self.t('trophy_show_unknown_icons'), variable=show_icons,
+                        command=self.trophy_icons_changed).pack(side='left', padx=8)
+
+    def trophy_icons_changed(self):
+        if self.busy:
+            return
+        self.changed()
+        self.refresh_achievements()
 
     def layout_achievements(self, event=None):
         if not getattr(self, 'achievement_canvas', None):
@@ -398,12 +408,13 @@ class Launcher:
         unlocked_count = sum(str(key) in records for key in catalog.trophies)
         text = self.t('trophy_progress', count=unlocked_count, total=len(catalog.trophies)) if catalog.trophies else self.t('achievement_empty')
         if catalog.trophies and not catalog.complete:
-            text += '  ' + self.t('metadata_needed')
+            text += '  ' + self.t('metadata_icons_only' if self.settings.get('trophy_show_unknown_icons', False)
+                                   else 'metadata_needed')
         self.achievement_summary.configure(text=text)
         for key, entry in sorted(catalog.trophies.items()):
             unlocked = str(key) in records
             try:
-                view = catalog.view(key, unlocked)
+                view = catalog.view(key, unlocked, self.settings.get('trophy_show_unknown_icons', False))
             except (OSError, trophy_catalog.CatalogError):
                 view = dict(id=key, masked=not entry['known'] or entry['hidden'] and not unlocked,
                             unlocked=unlocked, name=entry['name'], detail=entry['detail'], grade=entry['grade'], icon=None)

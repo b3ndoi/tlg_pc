@@ -93,6 +93,7 @@ DEFAULT_SETTINGS = {
     'track_achievements': True,    # observes existing trophy events only; never patches game logic
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
     'trophy_metadata_dir': '',     # owner-supplied decrypted XML; never bundled/downloaded
+    'trophy_show_unknown_icons': False,  # explicit spoiler opt-in; never changes unlock state
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).

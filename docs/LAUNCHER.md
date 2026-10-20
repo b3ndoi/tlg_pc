@@ -47,6 +47,10 @@ hidden trophies show a generic question mark: their real name, description,
 grade and icon do not reach widget text, tooltips or image decoding. They are
 revealed after an observed unlock. If metadata is missing/encrypted, entries
 remain question-mark cards even when unlocked; unknown flags are not guessed.
+An explicit **Show unknown icons** spoiler opt-in can display extracted artwork
+without decrypted metadata. Names/grades/hidden flags remain unknown and unlock
+state is unchanged. This option is off by default; known hidden trophies still
+stay masked until unlocked even with the option enabled.
 The page clearly distinguishes missing metadata from a confirmed hidden flag.
 An invalid catalog is reported, not silently treated as a valid full catalog.
 
@@ -153,7 +157,10 @@ Windows additionally checks Python/native migration and concurrent writers.
 Linux CI uses
 Xvfb; Windows CI uses setup-python's Tk interpreter. All fixture files are tiny
 synthetic data in temporary directories, not real game/firmware assets. Package
-smoke tests exercise frozen modules/catalogs and a synthetic unlock through the
+guards reject trophy archives, encrypted/decrypted metadata and extracted icon
+filenames. Git exclusions and the real package guard are tested with synthetic
+files, including an allowed launcher-source/icon fixture. Frozen package
+smoke tests exercise modules/catalogs and a synthetic unlock through the
 existing `--script` entry without mapping a UI window or launching a game.
 
 Visual review at desktop DPI settings and live notification/trophy validation

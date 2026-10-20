@@ -31,7 +31,7 @@ def main():
         parser.error('--elf must be an existing local file')
     for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
                  'test_launcher_localization.py', 'test_launcher_ui.py', 'test_trophy_catalog.py',
-                 'test_native_trophies.py', 'test_trophy_save_audit.py'):
+                 'test_native_trophies.py', 'test_trophy_save_audit.py', 'test_package_assets.py'):
         run([sys.executable, PORT/'tests'/name])
     if sys.platform != 'win32':
         cc = shutil.which(os.environ.get('CC', 'cc'))
