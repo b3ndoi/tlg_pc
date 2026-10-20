@@ -22,6 +22,7 @@
 #include "tlg_graphics.h"
 #include "tlg_perf_stats.h"
 #include "../../src/actor_hook.h"
+#include "../../src/runtime_photo.h"
 
 extern TlgActorSlot tlg_actor_slots[2];
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
@@ -1739,6 +1740,7 @@ static bool NoticeActive() {
 }
 
 bool Visible() {
+    if (runtime_photo_active()) return false;
     const auto& s = TlgSettings::Get();
     const auto now = std::chrono::steady_clock::now();
     return initialized && (loading || background_total || menu_open || text_entry_active || choice_active ||
@@ -1749,7 +1751,7 @@ bool Visible() {
 }
 
 bool CapturesInput() {
-    return menu_open || text_entry_active || choice_active || message_active;
+    return runtime_photo_captures_input() || menu_open || text_entry_active || choice_active || message_active;
 }
 
 void BeginSaveList(int kind, std::vector<SaveRow> rows, std::vector<TlgPng::Image> pictures, int focus) {

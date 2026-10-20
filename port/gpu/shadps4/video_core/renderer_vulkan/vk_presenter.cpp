@@ -16,6 +16,9 @@
 #include "tlg_settings.h"
 #include "tlg_graphics.h"
 #include "tlg_frame_context.h"
+#include "tlg_photo_png.h"
+#include "../../../../src/runtime_photo.h"
+extern "C" const char* runtime_file_user_dir(void);
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
@@ -33,6 +36,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <new>
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -745,6 +749,35 @@ void Presenter::PresentLoadingFrame() {
     present_scheduler.Finish();
 }
 
+// Unlike ordinary renderer buffers, an optional screenshot allocation must
+// fail softly rather than terminating gameplay when the memory budget is tight.
+struct PhotoReadback {
+    VmaAllocator allocator{};
+    VkBuffer buffer{};
+    VmaAllocation allocation{};
+    std::span<u8> mapped_data;
+    ~PhotoReadback() { if (buffer) vmaDestroyBuffer(allocator,buffer,allocation); }
+    static constexpr u64 SizeBytes() { return 2560ull*1440*4; }
+    vk::Buffer Handle() const { return vk::Buffer{buffer}; }
+    bool Invalidate() const { return vmaInvalidateAllocation(allocator,allocation,0,SizeBytes())==VK_SUCCESS; }
+    static std::unique_ptr<PhotoReadback> Create(VmaAllocator allocator) {
+        std::unique_ptr<PhotoReadback> result{new(std::nothrow) PhotoReadback};
+        if (!result) return {};
+        result->allocator=allocator;
+        const VkBufferCreateInfo buffer_info{.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size=SizeBytes(),.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+        const VmaAllocationCreateInfo memory_info{
+            .flags=VMA_ALLOCATION_CREATE_MAPPED_BIT|VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+            .usage=VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+        };
+        VmaAllocationInfo mapped{};
+        if (vmaCreateBuffer(allocator,&buffer_info,&memory_info,&result->buffer,&result->allocation,&mapped)!=VK_SUCCESS ||
+            !mapped.pMappedData) return {};
+        result->mapped_data={static_cast<u8*>(mapped.pMappedData),size_t(SizeBytes())};
+        return result;
+    }
+};
+
 void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame) {
     // Free the frame for reuse
     const auto free_frame = [&] {
@@ -791,6 +824,23 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     const vk::Image swapchain_image = swapchain.Image();
     auto& scheduler = present_scheduler;
     const auto cmdbuf = scheduler.CommandBuffer();
+    std::unique_ptr<PhotoReadback> photo_readback;
+    bool photo_bgra=false;
+    if (is_game_frame && runtime_photo_take_capture()) {
+        const auto format=swapchain.GetSurfaceFormat().format;
+        const bool rgba=format==vk::Format::eR8G8B8A8Unorm || format==vk::Format::eR8G8B8A8Srgb;
+        photo_bgra=format==vk::Format::eB8G8R8A8Unorm || format==vk::Format::eB8G8R8A8Srgb;
+        if (frame->width==2560 && frame->height==1440 && !frame->is_hdr && (rgba || photo_bgra)) {
+            photo_readback=PhotoReadback::Create(instance.GetAllocator());
+            if (!photo_readback) {
+                TlgOverlay::Notice("Photo not saved: readback allocation unavailable.",5);
+                std::puts("Photo mode: readback allocation unavailable; game continues");
+            }
+        } else {
+            TlgOverlay::Notice("Photo not saved: requires a native 2560x1440 SDR output frame.",5);
+            std::puts("Photo mode: capture refused (requires 2560x1440 SDR RGBA8/BGRA8)");
+        }
+    }
 
     if (EmulatorSettings.IsVkHostMarkersEnabled()) {
         cmdbuf.beginDebugUtilsLabelEXT(vk::DebugUtilsLabelEXT{
@@ -833,6 +883,23 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
                                vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion,
                                {}, {}, pre_barriers);
+        if (photo_readback) {
+            const vk::BufferImageCopy region{
+                .imageSubresource={vk::ImageAspectFlagBits::eColor,0,0,1},
+                .imageExtent={2560,1440,1},
+            };
+            cmdbuf.copyImageToBuffer(frame->image,vk::ImageLayout::eTransferSrcOptimal,
+                                    photo_readback->Handle(),region);
+            const vk::BufferMemoryBarrier host_ready{
+                .srcAccessMask=vk::AccessFlagBits::eTransferWrite,
+                .dstAccessMask=vk::AccessFlagBits::eHostRead,
+                .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+                .buffer=photo_readback->Handle(),.offset=0,.size=photo_readback->SizeBytes(),
+            };
+            cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eHost,
+                                   vk::DependencyFlagBits{}, {},host_ready,{});
+        }
         const vk::ClearColorValue black{std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
         cmdbuf.clearColorImage(swapchain_image, vk::ImageLayout::eTransferDstOptimal, black, color_range);
         const vk::MemoryBarrier clear_done{
@@ -903,7 +970,34 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     info.AddWait(frame->ready_semaphore, frame->ready_tick);
     info.AddSignal(swapchain.GetPresentReadySemaphore());
     info.AddSignal(frame->present_done);
+    const u64 photo_tick=scheduler.CurrentTick();
     scheduler.Flush(info);
+
+    if (photo_readback) {
+        // This submission already waits on the frame's render semaphore above.
+        // Read only after completion and cache invalidation, before the frame
+        // can return to the pool. The extra wait exists only for a user capture.
+        scheduler.Wait(photo_tick);
+        const bool readable=photo_readback->Invalidate();
+        auto pixels=photo_readback->mapped_data;
+        if (readable) {
+            if (photo_bgra) for(size_t i=0;i<pixels.size();i+=4) std::swap(pixels[i],pixels[i+2]);
+            for(size_t i=3;i<pixels.size();i+=4) pixels[i]=255;
+        }
+        try {
+            auto directory=std::filesystem::u8path(runtime_file_user_dir())/"photos";
+            std::filesystem::create_directories(directory);
+            const auto stamp=std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            auto path=directory/("photo-"+std::to_string(stamp)+".png");
+            bool saved=readable && TlgPhoto::WritePng(path,pixels);
+            std::printf("Photo mode: %s 2560x1440 PNG %s\n",saved ? "saved" : "failed to save",
+                        reinterpret_cast<const char*>(path.u8string().c_str()));
+            TlgOverlay::Notice(saved ? "1440p photo saved in user/photos." : "Photo could not be saved (check disk space/permissions).",5);
+        } catch (const std::exception& error) {
+            std::printf("Photo mode: capture output failed: %s\n",error.what());
+        }
+    }
 
     // Present to swapchain.
     {

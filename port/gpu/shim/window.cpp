@@ -14,6 +14,8 @@
 #include "tlg_settings.h"
 #include "tlg_frame_context.h"
 #include "tlg_prompts.h"
+#include "tlg_photo_controls.h"
+#include "../../src/runtime_photo.h"
 #include "../tlggpu.h"
 
 namespace {
@@ -201,7 +203,7 @@ bool WindowSDL::HandleMouse(const SDL_Event& event) {
 
 void WindowSDL::UpdateMouseCapture() {
     const bool want = TlgSettings::Get().mouse_enabled && focused && !mouse_released &&
-                      !TlgOverlay::CapturesInput();
+                      (!TlgOverlay::CapturesInput() || runtime_photo_active());
     if (want == mouse_captured) {
         return;
     }
@@ -399,7 +401,7 @@ bool WindowSDL::PollEvents() {
             UpdateTextTitle();
             continue;
         }
-        if (TlgOverlay::HandleEvent(event) || HandleMouse(event)) {
+        if (TlgPhoto::HandleEvent(event,TlgOverlay::CapturesInput()) || TlgOverlay::HandleEvent(event) || HandleMouse(event)) {
             continue;
         }
         switch (event.type) {
@@ -425,6 +427,7 @@ bool WindowSDL::PollEvents() {
     minimized = (flags & SDL_WINDOW_MINIMIZED) != 0;
     TlgFrameContext::Window(minimized, (flags & SDL_WINDOW_INPUT_FOCUS) != 0);
     UpdateMouseCapture();
+    TlgPhoto::Poll();
     return is_open;
 }
 

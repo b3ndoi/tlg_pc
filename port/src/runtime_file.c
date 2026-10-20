@@ -5,6 +5,7 @@
  * Paths containing ".." components are rejected rather than normalized. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "runtime_photo.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,7 @@ typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Li
  * inFAMOUS say "the disc or hard disk is corrupted" at the graffiti. Reads at the position go
  * through compat_pread like pread. */
 typedef struct { int used, host; Listing *dir; size_t position; char path[512];
+                 int photo; size_t photo_size; char photo_data[256];
                  int64_t offset; int append; pthread_mutex_t io; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
@@ -208,6 +210,23 @@ static int game_path(const char *p) {
 /* All operations return >=0 or -(host errno); wrappers adapt the convention. */
 static void log_io_problem(const char *what,const char *detail,int64_t n,int error);
 static int64_t do_open(const char *guest,int flags,int mode) {
+    /* An opt-in in-memory mailbox for the Lua-thread photo backend. It cannot
+     * create/overwrite a real file and never traverses the mount table. */
+    if (guest && (!strcmp(guest,"/tlg-photo/control") || !strcmp(guest,"/tlg-photo/status"))) {
+        if (!runtime_photo_enabled()) return -ENOENT;
+        int kind=!strcmp(guest,"/tlg-photo/control") ? 1 : 2;
+        if ((kind==1 && (flags&3)) || (kind==2 && (flags&3)!=1)) return -EACCES;
+        pthread_mutex_lock(&lock);
+        int fd=-1;
+        for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
+        if (fd>=0) {
+            files[fd]=(File){.used=1,.host=-1,.photo=kind};
+            pthread_mutex_init(&files[fd].io,NULL);
+            if (kind==1) files[fd].photo_size=runtime_photo_control(files[fd].photo_data,sizeof(files[fd].photo_data));
+        }
+        pthread_mutex_unlock(&lock);
+        return fd<0 ? -EMFILE : fd;
+    }
     if (game_path(guest) && (flags & (3|0x8|0x200|0x400|0x800))) return -EROFS;
     char path[1024];
     int e=translate(guest,path,sizeof(path));
@@ -274,6 +293,7 @@ static int64_t do_close(int fd) {
     pthread_mutex_lock(&lock);
     File *f=get(fd);
     if (!f) { pthread_mutex_unlock(&lock); return -EBADF; }
+    if (f->photo==2) runtime_photo_status(f->photo_data,f->photo_size);
     if (f->host>=0) close(f->host);
     free_listing(f->dir);
     pthread_mutex_destroy(&f->io);
@@ -375,6 +395,17 @@ static ssize_t full_io(int h,void *buffer,uint64_t size,int64_t offset) {
     return (ssize_t)done;
 }
 static int64_t do_read(int fd,void *buffer,uint64_t size) {
+    File *photo=get(fd);
+    if (photo && photo->photo) {
+        if (photo->photo!=1) return -EBADF;
+        if (!buffer && size) return -EFAULT;
+        pthread_mutex_lock(&photo->io);
+        size_t available=photo->photo_size-photo->position;
+        size_t n=size<available ? (size_t)size : available;
+        if (n) memcpy(buffer,photo->photo_data+photo->position,n);
+        photo->position+=n;
+        pthread_mutex_unlock(&photo->io); return (int64_t)n;
+    }
     int h=host_fd(fd);
     if (h<0) return -EBADF;
 #ifdef _WIN32
@@ -421,6 +452,18 @@ static ssize_t bounce_write(int h,const unsigned char *at,uint64_t size,int64_t 
 }
 #endif
 static int64_t do_write(int fd,const void *buffer,uint64_t size) {
+    File *photo=get(fd);
+    if (photo && photo->photo) {
+        if (photo->photo!=2) return -EBADF;
+        if (!buffer && size) return -EFAULT;
+        pthread_mutex_lock(&photo->io);
+        if (size>sizeof(photo->photo_data)-photo->photo_size) {
+            pthread_mutex_unlock(&photo->io); return -EFBIG;
+        }
+        if (size) memcpy(photo->photo_data+photo->photo_size,buffer,(size_t)size);
+        photo->photo_size+=(size_t)size;
+        pthread_mutex_unlock(&photo->io); return (int64_t)size;
+    }
     int h=host_fd(fd);
     if (h<0) return -EBADF;
 #ifdef _WIN32
@@ -467,6 +510,7 @@ static int64_t do_pwrite(int fd,const void *buffer,uint64_t size,int64_t offset)
 static int64_t do_lseek(int fd,int64_t offset,int whence) {
     File *f=get(fd);
     if (!f) return -EBADF;
+    if (f->photo) return -ESPIPE;
     if (whence<0 || whence>2) return -EINVAL;
     if (f->dir) {
         /* Directory offsets are entry indices for getdirentries. */
@@ -494,6 +538,13 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
 #endif
 }
 static int64_t do_fstat(int fd,GuestStat *out) {
+    File *photo=get(fd);
+    if (photo && photo->photo) {
+        if (!out) return -EFAULT;
+        memset(out,0,sizeof(*out)); out->mode=0100600; out->nlink=1;
+        out->size=(int64_t)photo->photo_size; out->blksize=256;
+        return 0;
+    }
     int h=host_fd(fd);
     HostStat s;
 #ifdef _WIN32

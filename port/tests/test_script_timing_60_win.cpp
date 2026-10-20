@@ -11,6 +11,7 @@
 #include <vector>
 #include <windows.h>
 #include "script_timing_60.h"
+#include "runtime_photo.h"
 
 static const char *expected_source, *expected_name;
 static void *expected_vm, *expected_options;
@@ -71,6 +72,23 @@ int main(int argc,char **argv) {
     auto load=reinterpret_cast<TlgScriptLoad>(memory);
     unsigned transformed=0,unchanged=0;
     const auto assets=std::filesystem::path(argv[2]);
+    {
+        auto source=Read(assets/"game/scripts/common/gamesetup.lua");
+        const auto original=source;
+        size_t length=0;
+        assert(!tlg_photo_append(source.data(),source.size(),&length));
+        runtime_photo_enable(1);
+        char* photo=tlg_photo_append(source.data(),source.size(),&length);
+        assert(photo && length>source.size() && !std::memcmp(photo,source.data(),source.size()));
+        assert(source==original && photo[length]==0);
+        free(photo);
+        source[0]^=1;
+        assert(!tlg_photo_append(source.data(),source.size(),&length));
+        source=original;source.push_back(0);
+        photo=tlg_photo_append(source.data(),source.size(),&length);assert(photo);free(photo);
+        runtime_photo_enable(0);
+        puts("PASS: exact EU photo bootstrap, opt-in, modified-source refusal and trailing NUL");
+    }
     for (const auto& entry : std::filesystem::recursive_directory_iterator(assets)) {
         if (!entry.is_regular_file() || entry.path().extension()!=".lua") continue;
         auto source=Read(entry.path());
