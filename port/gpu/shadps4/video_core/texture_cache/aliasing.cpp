@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <optional>
 
+#include "video_core/amdgpu/resource.h"
 #include "video_core/texture_cache/aliasing.h"
 #include "video_core/texture_cache/host_compatibility.h"
 #include "video_core/texture_cache/image_info.h"
@@ -43,6 +44,27 @@ std::optional<Extent3D> GetAliasCopyExtent(const ImageInfo& src, const ImageInfo
         .width = src.size.width,
         .height = std::min(src.size.height, dst.size.height),
         .depth = 1,
+    };
+}
+
+bool IsVolumeDepthExpansion(const ImageInfo& cached, const ImageInfo& requested) {
+    return cached.type == AmdGpu::ImageType::Color3D &&
+           requested.type == AmdGpu::ImageType::Color3D &&
+           !cached.props.is_block && !requested.props.is_block &&
+           cached.resources.levels == 1 && requested.resources.levels == 1 &&
+           cached.resources.layers == 1 && requested.resources.layers == 1 &&
+           requested.size.width == cached.size.width &&
+           requested.size.height == cached.size.height &&
+           requested.size.depth > cached.size.depth &&
+           requested.guest_size > cached.guest_size &&
+           GetAliasCopyExtent(requested, cached) == cached.size;
+}
+
+Extent3D GetVolumeCopyExtent(const ImageInfo& src, const ImageInfo& dst, u32 mip) {
+    return {
+        std::max(std::min(src.size.width, dst.size.width) >> mip, 1u),
+        std::max(std::min(src.size.height, dst.size.height) >> mip, 1u),
+        std::max(std::min(src.size.depth, dst.size.depth) >> mip, 1u),
     };
 }
 

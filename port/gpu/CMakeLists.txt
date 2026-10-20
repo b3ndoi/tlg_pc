@@ -243,7 +243,7 @@ if (WIN32)
     target_compile_options(atrac9 PRIVATE -w)
     set_target_properties(atrac9 PROPERTIES C_STANDARD 99 INTERPROCEDURAL_OPTIMIZATION OFF)
     add_executable(tlg-probe ../src/probe.c ${TLG_RUNTIME} ../src/compat_win.c ../src/cpu_check.c ../src/vulkan_smoke.c
-        ../src/isa_rewrite.c ../src/isa_emulate.c
+        ../src/isa_rewrite.c ../src/isa_emulate.c ../src/input_timing_60.c ../src/climb_diagnostics.c ../src/script_timing_60.c ../src/clock_sync_60.c
         ../packaging/windows/tlg-probe.rc)
     set_target_properties(tlg-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
     target_compile_options(tlg-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>)
@@ -252,6 +252,28 @@ if (WIN32)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
     target_link_options(tlg-probe PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
+    add_executable(fault-dispatch-win-test EXCLUDE_FROM_ALL ../tests/test_fault_dispatch_win.c ../src/compat_win.c)
+    set_target_properties(fault-dispatch-win-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_compile_options(fault-dispatch-win-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_include_directories(fault-dispatch-win-test PRIVATE ../src)
+    target_link_libraries(fault-dispatch-win-test PRIVATE bcrypt onecore -pthread)
+    add_executable(reload-null-guard-test EXCLUDE_FROM_ALL ../tests/test_reload_null_guard_win.cpp)
+    target_include_directories(reload-null-guard-test PRIVATE ../src)
+    target_compile_options(reload-null-guard-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    add_executable(input-timing-60-test EXCLUDE_FROM_ALL ../tests/test_input_timing_60_win.cpp ../src/input_timing_60.c ../src/climb_diagnostics.c)
+    target_include_directories(input-timing-60-test PRIVATE ../src)
+    target_compile_options(input-timing-60-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    add_executable(climb-diagnostics-test EXCLUDE_FROM_ALL ../tests/test_climb_diagnostics_win.cpp ../src/climb_diagnostics.c)
+    target_include_directories(climb-diagnostics-test PRIVATE ../src)
+    target_compile_options(climb-diagnostics-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    add_executable(script-timing-60-test EXCLUDE_FROM_ALL ../tests/test_script_timing_60_win.cpp ../src/script_timing_60.c)
+    target_include_directories(script-timing-60-test PRIVATE ../src)
+    target_compile_options(script-timing-60-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_link_libraries(script-timing-60-test PRIVATE bcrypt)
+    add_executable(clock-sync-60-test EXCLUDE_FROM_ALL ../tests/test_clock_sync_60_win.cpp ../src/clock_sync_60.c)
+    target_include_directories(clock-sync-60-test PRIVATE ../src)
+    target_compile_options(clock-sync-60-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_link_libraries(clock-sync-60-test PRIVATE bcrypt)
     # tlg: runtime unit tests (ninja -C out/gpu mp3-test videodec-test services-test).
     add_executable(mp3-test EXCLUDE_FROM_ALL ../tests/test_mp3.c ../src/runtime_mp3.c ../src/compat_win.c)
     add_executable(videodec-test EXCLUDE_FROM_ALL ../tests/test_videodec.c ../src/compat_win.c)
@@ -306,6 +328,11 @@ if (WIN32)
     target_compile_options(isa-sse4a-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
     target_include_directories(isa-sse4a-test PRIVATE .. ../src)
     add_executable(tlg-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/tlg-gpu-capabilities.rc)
+    add_executable(win-pacing-test EXCLUDE_FROM_ALL ../tests/test_win_pacing.cpp)
+    target_include_directories(win-pacing-test PRIVATE shim)
+    target_compile_definitions(win-pacing-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(win-pacing-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_link_libraries(win-pacing-test PRIVATE -pthread)
     target_link_libraries(tlg-gpu-capabilities PRIVATE Vulkan::Vulkan)
     # "Play The Last Guardian.exe": the game with the launcher's saved settings, no launcher window.
     add_executable(tlg-play WIN32 ../packaging/windows/play.c ../packaging/windows/play.rc)
@@ -385,6 +412,12 @@ add_executable(ui-composition-test EXCLUDE_FROM_ALL ../tests/test_ui_composition
 target_compile_options(ui-composition-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(ui-composition-test PRIVATE ..)
 
+add_executable(display-coherence-test EXCLUDE_FROM_ALL ../tests/test_display_coherence.cpp)
+target_compile_options(display-coherence-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+target_include_directories(display-coherence-test PRIVATE ..)
+target_link_libraries(display-coherence-test PRIVATE Vulkan::Headers)
+target_compile_definitions(display-coherence-test PRIVATE VULKAN_HPP_NO_CONSTRUCTORS)
+
 add_executable(scene-resolution-test EXCLUDE_FROM_ALL ../tests/test_scene_resolution.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(scene-resolution-test PRIVATE shim shadps4 third_party/gcn/include)
 # The test's Vulkan-Hpp inline methods have a different set of platform extensions
@@ -455,6 +488,10 @@ add_executable(page-state-test EXCLUDE_FROM_ALL ../tests/test_page_state.cpp)
 target_include_directories(page-state-test PRIVATE ../tests/stubs shim shadps4)
 target_link_libraries(page-state-test PRIVATE Boost::headers)
 target_compile_options(page-state-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+
+add_executable(queued-commands-test EXCLUDE_FROM_ALL ../tests/test_queued_commands.cpp)
+target_include_directories(queued-commands-test PRIVATE shadps4)
+target_compile_options(queued-commands-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 
 add_executable(fsr4-bench EXCLUDE_FROM_ALL tools/fsr4_bench.cpp
     shadps4/video_core/renderer_vulkan/fsr411/fsr411.cpp)

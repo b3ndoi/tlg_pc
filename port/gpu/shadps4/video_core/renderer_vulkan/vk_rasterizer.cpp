@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
+#include "video_core/renderer_vulkan/native_output.h"
 #include "tlg_toggles.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/debug.h"
@@ -2746,7 +2747,13 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         scene_targets->EligibleScene(texture_cache.GetImage(db_desc.first))) scene_started = true;
     // A proxy attachment cannot represent MSAA or a feedback loop that reads the
     // same image through the guest's native descriptor during this draw.
-    bool reduced = scene_started && upscaler->RasterScaling() && key.num_samples == 1;
+    const bool display_buffer = cb_descs[0].first && FrameCapture::IsDisplayBuffer(
+        texture_cache.GetImage(cb_descs[0].first).info.guest_address);
+    // In native-output mode, menus/HUD need native raster targets even before
+    // the first G-buffer/camera. VideoOut is redirected separately, never proxied.
+    bool reduced = NativeOutput::RasterPass(scene_started, upscaler->NativeOutput(),
+                                            display_buffer) &&
+                   upscaler->RasterScaling() && key.num_samples == 1;
     // TLG_SCENE_DEBUG=<file>: once the file exists, why the passes of one frame keep the
     // native size (see NoteFrameStart).
     const bool debug_pass = scene_debug_frame && scene_started;
@@ -3014,6 +3021,11 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
             target_scale = UiComposition::Scale(guest_extent.first, guest_extent.second,
                                                 redirect.width, redirect.height,
                                                 native_coordinates);
+            if (upscaler->NativeOutput()) {
+                // The display pass isn't a scene proxy, but its pixel shader
+                // still uses the guest's 1920x1080 screen-space constants.
+                push_data.scene_size = NativeOutput::FragmentCoordinates(true, target_scale);
+            }
         }
     }
 

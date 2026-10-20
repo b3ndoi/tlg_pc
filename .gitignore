@@ -33,3 +33,20 @@ port/pgo/
 port/user
 /game
 port/dist/
+# Fork development: private dumps, runtime sessions, saves and research stay local.
+*.elf
+*.self
+*.pkg
+*.dmp
+*.core
+*.log
+memory.dat
+test-session.json
+preparation.json
+/outputs/
+/work/
+/private/
+/user/
+/system_lib/
+/save-snapshot/
+/verification/

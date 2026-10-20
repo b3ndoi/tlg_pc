@@ -13,6 +13,9 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#ifdef _WIN32
+#include "tlg_win_pacing.h"
+#endif
 
 namespace Vulkan {
 struct Frame;
@@ -129,9 +132,12 @@ private:
 
     std::mutex mutex;
     std::condition_variable request_cv; ///< tlg: a flip was queued (immediate flips)
+#ifdef _WIN32
+    Common::WinPacing::Wakeup request_wakeup;
+#endif
     VideoOutPort main_port{};
-    std::jthread present_thread;
     std::queue<Request> requests;
+    std::jthread present_thread; ///< joins before the request queue/event/mutex are destroyed
 };
 
 } // namespace Libraries::VideoOut

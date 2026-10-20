@@ -11,6 +11,7 @@
 #include "video_core/renderer_vulkan/vk_scene_resolution.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/blit_helper.h"
+#include "video_core/texture_cache/aliasing.h"
 #include "video_core/texture_cache/image.h"
 
 #include <vulkan/vulkan_format_traits.hpp>
@@ -371,7 +372,11 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
                 // 3D images must use layerCount=1
                 region.srcSubresource.layerCount = 1;
                 region.dstSubresource.layerCount = 1;
-                region.extent = vk::Extent3D(mip_w, mip_h, mip_d);
+                // A growing volume's destination depth can exceed the source depth.
+                // Copy only the common mip extent; ExpandImage already initialized the
+                // newly exposed slices from guest memory. Also bound shrinking copies.
+                const auto extent = VideoCore::GetVolumeCopyExtent(src->info, dst->info, mip);
+                region.extent = vk::Extent3D(extent.width, extent.height, extent.depth);
             } else {
                 // Array images
                 const u32 copy_layers = std::min(src_layers, dst_layers);

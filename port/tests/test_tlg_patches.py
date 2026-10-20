@@ -1,16 +1,18 @@
 from paths import ROOT
 import struct
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import tlg_patches as t
 
 
-def text_with(names, expected=True):
+def text_with(names, expected=True, patches=t.PATCHES):
     """A text segment with each patch's expected bytes (or other bytes) at its offset."""
     text = bytearray(t.TEXT_SIZE)
     for name in names:
-        for address, original, _, _ in t.PATCHES[name]:
+        for address, original, _, _ in patches[name]:
             offset = address - t.GHIDRA_BASE
             text[offset:offset + len(original)] = original if expected else b'\xcc' * len(original)
     return text
@@ -64,7 +66,57 @@ class FrameRatePatchTests(unittest.TestCase):
         # Unchanged: a plain ELF is only patched when it is the checked 1.03 dump.
         applied, lines, _ = self.prepare(plain_elf(text_with(t.MODES['60'])), '60')
         self.assertEqual(applied, '30')
-        self.assertTrue(any('is not v1.03' in line for line in lines))
+        self.assertTrue(any('unsupported eboot.bin' in line for line in lines))
+
+    def test_verified_eu_self_uses_eu_offsets(self):
+        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()):
+            applied, lines, blob = self.prepare(eboot, '60')
+        self.assertEqual(applied, '60')
+        self.assertTrue(any('CUSA03745 EU 01.00' in line for line in lines))
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 4))
+        pos, writes = 24, []
+        while pos < len(blob):
+            offset, size = struct.unpack_from('<QQ', blob, pos)
+            pos += 16
+            writes.append((offset, blob[pos:pos + size]))
+            pos += size
+        self.assertEqual(writes, [(0xb8be7c, bytes.fromhex('be00000000')),
+                                  (0x14d9920, t.f32(0.0175)),
+                                  (0x14d9924, t.f32(1 / 60)),
+                                  (0x14d9928, t.f32(0.0158333331))])
+
+    def test_eu_plain_elf_unlocked(self):
+        eboot = plain_elf(text_with(t.MODES['unlocked'], patches=t.EU_100_PATCHES))
+        with patch.object(t, 'EBOOT_EU_100_ELF_SHA256', hashlib.sha256(eboot).hexdigest()):
+            applied, _, blob = self.prepare(eboot, 'unlocked')
+        self.assertEqual(applied, 'unlocked')
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 1))
+
+    def test_unrecognized_eu_layout_stays_at_30(self):
+        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        applied, _, blob = self.prepare(eboot, '60')
+        self.assertEqual(applied, '30')
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
+
+    def test_eu_mismatched_constant_discards_all_writes(self):
+        text = text_with(t.MODES['60'], patches=t.EU_100_PATCHES)
+        text[0x14d9928] ^= 1
+        eboot = self_dump(text)
+        with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()):
+            applied, lines, blob = self.prepare(eboot, '60')
+        self.assertEqual(applied, '30')
+        self.assertTrue(any('dt_snap_60' in line and 'expected' in line for line in lines))
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
+
+    def test_unmapped_experimental_patch_rejected_for_eu(self):
+        eboot = self_dump(text_with(t.MODES['60'], patches=t.EU_100_PATCHES))
+        with patch.object(t, 'EBOOT_EU_100_SHA256', hashlib.sha256(eboot).hexdigest()), \
+                patch.dict('os.environ', {'TLG_FPS_PATCHES': 'max_fps_off'}):
+            applied, lines, blob = self.prepare(eboot, '60')
+        self.assertEqual(applied, '30')
+        self.assertTrue(any('unavailable for this executable build' in line for line in lines))
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 0))
 
     def test_30_writes_an_empty_patch_file(self):
         applied, lines, blob = self.prepare(b'', '30')

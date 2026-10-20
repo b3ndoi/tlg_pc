@@ -4,25 +4,45 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+#include "tlg_win_compat.h"
 #include "common/slot_vector.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_scene_resolution.h"
+#include "video_core/renderer_vulkan/display_surface.h"
 #include "video_core/texture_cache/blit_helper.h"
 #include <vk_mem_alloc.h>
 
-int main() {
+int main(int argc, char** argv) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     using namespace Vulkan;
-    Instance instance(0, false);
+    // Optional device index lets this headless regression use an idle iGPU while
+    // an unrelated manually played session continues on the discrete adapter.
+    Instance instance(argc > 1 ? std::atoi(argv[1]) : 0, false);
     // Calls emitted by this executable use a local dispatcher. libtlggpu.so initializes
     // its own default dispatcher while constructing Instance.
+    // Do not instantiate another inline init(Instance) here on PE/COFF: its
+    // COMDAT can replace vk_platform.cpp's differently platform-enabled method.
+    // Populate only this test's explicit device commands, without sharing the
+    // platform-dependent dispatch-table layout with the library.
     static vk::detail::DynamicLoader loader;
+    const auto get_instance_proc = loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+    const auto get_device_proc = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
+        get_instance_proc(instance.GetInstance(), "vkGetDeviceProcAddr"));
     vk::detail::DispatchLoaderDynamic dispatch;
-    dispatch.init(
-        loader.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
-    dispatch.init(instance.GetInstance());
-    dispatch.init(instance.GetDevice());
+#define TEST_COMMAND(name) dispatch.name = reinterpret_cast<PFN_##name>(get_device_proc(instance.GetDevice(), #name))
+    TEST_COMMAND(vkCmdPipelineBarrier2);
+    TEST_COMMAND(vkCmdCopyImageToBuffer);
+    TEST_COMMAND(vkCmdClearDepthStencilImage);
+    TEST_COMMAND(vkCmdClearColorImage);
+    TEST_COMMAND(vkCmdBeginRendering);
+    TEST_COMMAND(vkCmdEndRendering);
+    TEST_COMMAND(vkCmdClearAttachments);
+    TEST_COMMAND(vkCreateImageView);
+    TEST_COMMAND(vkDestroyImageView);
+#undef TEST_COMMAND
     Scheduler scheduler(instance);
     Runtime runtime(instance, scheduler);
     Common::SlotVector<VideoCore::ImageView> views;
@@ -196,6 +216,75 @@ int main() {
         assert(result == 0xff00ff00);
     }
     std::puts("Scene targets: half-resolution mip level proxy roundtrip PASS");
+
+    // A real 1440p raster target, not a 1080p image enlarged at presentation.
+    // Adjacent independently drawn pixels beyond x=1920 must survive direct
+    // host-proxy sampling without a native-size resolve in between.
+    targets.SetSize({2560,1440});
+    auto full = targets.Attachment(color_id,cv);
+    const auto cmd = scheduler.CommandBuffer();
+    const vk::RenderingAttachmentInfo output{.imageView=full.view,.imageLayout=full.layout,
+        .loadOp=vk::AttachmentLoadOp::eClear,.storeOp=vk::AttachmentStoreOp::eStore,
+        .clearValue=vk::ClearValue{.color={.float32=std::array{0.f,0.f,0.f,1.f}}}};
+    cmd.beginRendering({.renderArea={{0,0},{2560,1440}},.layerCount=1,
+        .colorAttachmentCount=1,.pColorAttachments=&output}, dispatch);
+    const vk::ClearAttachment red{.aspectMask=vk::ImageAspectFlagBits::eColor,
+        .colorAttachment=0,.clearValue=vk::ClearValue{.color={.float32=std::array{1.f,0.f,0.f,1.f}}}};
+    const vk::ClearAttachment green{.aspectMask=vk::ImageAspectFlagBits::eColor,
+        .colorAttachment=0,.clearValue=vk::ClearValue{.color={.float32=std::array{0.f,1.f,0.f,1.f}}}};
+    cmd.clearAttachments(red,vk::ClearRect{.rect={{2048,1439},{1,1}},.baseArrayLayer=0,.layerCount=1},dispatch);
+    cmd.clearAttachments(green,vk::ClearRect{.rect={{2049,1439},{1,1}},.baseArrayLayer=0,.layerCount=1},dispatch);
+    cmd.endRendering(dispatch);
+    assert(targets.ProxyCurrent(images[color_id],0,1));
+    const auto direct = targets.SampleProxy(images[color_id],cv);
+    assert(direct.has_value() && direct->image == full.image);
+    full = targets.Read(color_id,cv,vk::PipelineStageFlagBits2::eTransfer,vk::AccessFlagBits2::eTransferRead);
+    assert(pixel(full.image,vk::ImageAspectFlagBits::eColor,full.layout,2049,1440)==0xff0000ff);
+    assert(pixel(full.image,vk::ImageAspectFlagBits::eColor,full.layout,2050,1440)==0xff00ff00);
+    std::puts("Native 1440p raster: adjacent output pixels beyond 1080p extent preserved PASS");
+
+    // Exercise the same display initialization/write/read/return barriers as
+    // RedirectColor and Presenter. Partial overlays must retain the first draw,
+    // including untouched pixels, over subsequent reads and frames.
+    VideoCore::UniqueImage display_image(instance.GetDevice(), instance.GetAllocator());
+    display_image.Create(vk::ImageCreateInfo{
+        .imageType=vk::ImageType::e2D,.format=vk::Format::eR8G8B8A8Unorm,
+        .extent={2560,1440,1},.mipLevels=1,.arrayLayers=1,.samples=vk::SampleCountFlagBits::e1,
+        .tiling=vk::ImageTiling::eOptimal,
+        .usage=vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled |
+               vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc});
+    const auto device = instance.GetDevice();
+    const auto display_view = Check(device.createImageViewUnique({
+        .image=display_image,.viewType=vk::ImageViewType::e2D,.format=vk::Format::eR8G8B8A8Unorm,
+        .subresourceRange={vk::ImageAspectFlagBits::eColor,0,1,0,1}}, nullptr, dispatch));
+    DisplaySurfaceState display_state;
+    const auto display_cmd = scheduler.CommandBuffer(); // earlier pixel reads flushed their buffer
+    const auto initial = display_state.Initialize(display_image);
+    display_cmd.pipelineBarrier2({.imageMemoryBarrierCount=1,.pImageMemoryBarriers=&initial}, dispatch);
+    display_cmd.clearColorImage(display_image, vk::ImageLayout::eTransferDstOptimal,
+                        vk::ClearColorValue{std::array{0.f,0.f,0.f,1.f}},
+                        vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor,0,1,0,1}, dispatch);
+    for (unsigned draw = 0; draw < 12; ++draw) {
+        const auto write = DisplaySurfaceState::Write(display_image, draw == 0);
+        display_cmd.pipelineBarrier2({.imageMemoryBarrierCount=1,.pImageMemoryBarriers=&write}, dispatch);
+        const vk::RenderingAttachmentInfo retained{.imageView=*display_view,
+            .imageLayout=vk::ImageLayout::eGeneral,.loadOp=vk::AttachmentLoadOp::eLoad,
+            .storeOp=vk::AttachmentStoreOp::eStore};
+        display_cmd.beginRendering({.renderArea={{0,0},{2560,1440}},.layerCount=1,
+            .colorAttachmentCount=1,.pColorAttachments=&retained}, dispatch);
+        display_cmd.clearAttachments(draw == 0 ? red : green,
+            vk::ClearRect{.rect={{draw == 0 ? 2048 : 2049,1439},{1,1}},
+                          .baseArrayLayer=0,.layerCount=1}, dispatch);
+        display_cmd.endRendering(dispatch);
+        const auto read = DisplaySurfaceState::Read(display_image);
+        const auto returned = DisplaySurfaceState::AfterRead(display_image);
+        display_cmd.pipelineBarrier2({.imageMemoryBarrierCount=1,.pImageMemoryBarriers=&read}, dispatch);
+        display_cmd.pipelineBarrier2({.imageMemoryBarrierCount=1,.pImageMemoryBarriers=&returned}, dispatch);
+    }
+    assert(pixel(display_image,vk::ImageAspectFlagBits::eColor,vk::ImageLayout::eGeneral,2049,1440)==0xff0000ff);
+    assert(pixel(display_image,vk::ImageAspectFlagBits::eColor,vk::ImageLayout::eGeneral,2050,1440)==0xff00ff00);
+    assert(pixel(display_image,vk::ImageAspectFlagBits::eColor,vk::ImageLayout::eGeneral,2051,1440)==0xff000000);
+    std::puts("Native display: retained partial overlays, initialized untouched pixels and presentation roundtrip PASS");
     scheduler.Finish();
     vmaDestroyBuffer(instance.GetAllocator(),readback,allocation);
 }

@@ -18,6 +18,7 @@
 #include <pthread.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#include "tlg_win_pacing.h"
 #include "common/string_util.h"
 #else
 #if defined(__Bitrig__) || defined(__DragonFly__) || defined(__FreeBSD__) || defined(__OpenBSD__)
@@ -110,6 +111,17 @@ void SetCurrentThreadPriority(ThreadPriority new_priority) {
 bool AccurateSleep(const std::chrono::nanoseconds duration, std::chrono::nanoseconds* remaining,
                    const bool interruptible) {
     const auto begin_sleep = std::chrono::high_resolution_clock::now();
+
+    if (WinPacing::Enabled()) {
+        const auto result = WinPacing::ThreadTimer().Wait(duration, nullptr, interruptible);
+        if (result != WinPacing::Result::Failed) {
+            if (remaining) {
+                const auto elapsed = std::chrono::high_resolution_clock::now() - begin_sleep;
+                *remaining = duration > elapsed ? duration - elapsed : std::chrono::nanoseconds(0);
+            }
+            return result == WinPacing::Result::Deadline;
+        }
+    }
 
     LARGE_INTEGER interval{
         .QuadPart = -1 * (duration.count() / 100u),

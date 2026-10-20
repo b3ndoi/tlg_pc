@@ -19,6 +19,8 @@
 #include "tlg_freeze.h"
 #include "tlg_settings.h"
 #include "tlg_graphics.h"
+#include "tlg_frame_context.h"
+#include "tlg_frame_pacing.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/debug.h"
 #include "common/thread.h"
@@ -302,6 +304,7 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
 }
 
 void VideoOutDriver::Flip(const Request& req) {
+    TlgFrameContext::Flip();
     // Update HDR status before presenting, then present the frame (tlg: on the swap thread).
     TlgFreeze::flips_shown.fetch_add(1, std::memory_order_relaxed);
     RunPresenter([this, frame = req.frame, hdr = req.port->is_hdr] {
@@ -518,6 +521,7 @@ void VideoOutDriver::Flip(const Request& req) {
                         frames ? double(TlgStats::reduced_draws.exchange(0)) / frames : 0.0,
                         frames ? double(TlgStats::scene_draws.exchange(0)) / frames : 0.0);
             presenter->GetRasterizer().GetPipelineCache().ReportCompilerStats();
+            TlgFrameContext::Report(window);
             Vulkan::WaitDiagnostics::Report();
             // Frame pacing: spread of the guest flip intervals (judder that the mean hides).
             if (intervals.size() > 2) {
@@ -648,6 +652,9 @@ void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_
         });
     }
     request_cv.notify_one();
+#ifdef _WIN32
+    if (Common::WinPacing::Enabled()) request_wakeup.Notify();
+#endif
 }
 
 void VideoOutDriver::PresentThread(std::stop_token token) {
@@ -674,11 +681,52 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         return limit || !fast_vblank ? limit : EmulatorSettings.GetFrameLimit();
     };
     u32 frame_limit = current_limit();
+    const bool precise_pacing =
+#ifdef _WIN32
+        Common::WinPacing::Enabled();
+#else
+        false;
+#endif
     auto frame_period = frame_limit ? std::chrono::nanoseconds(1000000000 / frame_limit)
                                     : std::chrono::nanoseconds(0);
     auto next_flip = std::chrono::steady_clock::now();
     std::printf("VideoOut: vblank %u Hz, frame limit %u FPS\n",
                 EmulatorSettings.GetVblankFrequency(), frame_limit);
+#ifdef _WIN32
+    if (Common::WinPacing::Enabled()) {
+        std::printf("VideoOut pacing: frame-ready notification plus %s waitable deadlines; "
+                    "vblank frequency and engine timestep unchanged\n",
+                    Common::WinPacing::ThreadTimer().HighResolution() ? "high-resolution" : "fallback");
+    }
+#endif
+
+    const auto sleep_until = [](std::chrono::steady_clock::time_point deadline) {
+#ifdef _WIN32
+        if (Common::WinPacing::Enabled()) {
+            const auto remaining = deadline - std::chrono::steady_clock::now();
+            if (remaining > std::chrono::steady_clock::duration::zero()) {
+                Common::AccurateSleep(std::chrono::duration_cast<std::chrono::nanoseconds>(remaining), nullptr, false);
+            }
+            return;
+        }
+#endif
+        std::this_thread::sleep_until(deadline);
+    };
+    const auto wait_for_request = [this](std::chrono::steady_clock::time_point deadline) {
+#ifdef _WIN32
+        if (Common::WinPacing::Enabled() && request_wakeup.Valid()) {
+            for (;;) {
+                { std::scoped_lock lk{mutex}; if (!requests.empty()) return true; }
+                const auto result = request_wakeup.WaitUntil(deadline);
+                if (result == Common::WinPacing::Result::Deadline) return false;
+                if (result == Common::WinPacing::Result::Notified) continue;
+                break; // API failure: preserve the original CV path below
+            }
+        }
+#endif
+        std::unique_lock lk{mutex};
+        return request_cv.wait_until(lk, deadline, [&] { return !requests.empty(); });
+    };
 
     const auto receive_request = [this] -> Request {
         std::scoped_lock lk{mutex};
@@ -718,7 +766,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         if (flip_slot && vblank_status.count % (main_port.flip_rate + 1) == 0) {
             const auto request = receive_request();
             if (request && frame_limit) {
-                next_flip = std::max(next_flip + frame_period, now - frame_period);
+                next_flip = TlgFramePacing::Next(next_flip, frame_period, now, precise_pacing);
             }
             if (!request) {
                 if (timer.GetTotalWait().count() < 0) { // Dont draw too fast
@@ -764,28 +812,22 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
             continue;
         }
         while (!token.stop_requested()) {
-            {
-                std::unique_lock lk{mutex};
-                if (!request_cv.wait_until(lk, tick_deadline,
-                                           [&] { return !requests.empty(); })) {
-                    break; // next vblank
-                }
-            }
+            if (!wait_for_request(tick_deadline)) break; // next vblank
             if (std::chrono::steady_clock::now() < next_flip) {
                 if (next_flip >= tick_deadline) {
                     break;
                 }
-                std::this_thread::sleep_until(next_flip);
+                sleep_until(next_flip);
             }
             const auto now = std::chrono::steady_clock::now();
             const auto request = receive_request();
             if (request) {
-                next_flip = std::max(next_flip + frame_period, now - frame_period);
+                next_flip = TlgFramePacing::Next(next_flip, frame_period, now, precise_pacing);
                 Flip(request);
                 FRAME_END;
             }
         }
-        std::this_thread::sleep_until(tick_deadline);
+        sleep_until(tick_deadline);
     }
 }
 

@@ -21,6 +21,7 @@
 
 #include "common/types.h"
 #include "video_core/renderer_vulkan/vk_common.h"
+#include "video_core/renderer_vulkan/display_surface.h"
 #include "video_core/renderer_vulkan/vk_dlss.h"
 #include "video_core/renderer_vulkan/vk_fsr4.h"
 #include "video_core/texture_cache/image.h"
@@ -67,6 +68,9 @@ public:
     /// Start of a frame in the command stream (display pass).
     bool OnFrameStart();
     bool RasterScaling() const;
+    /// Opt-in TLG 1440p scene/menu/HUD raster plus native-size display replacement.
+    [[nodiscard]] bool NativeOutput() const;
+    [[nodiscard]] bool EngineNativeOutput() const { return engine_native_output; }
     /// tlg: LOD bias for scene materials, log2(render / output) while a reduced scene is
     /// upscaled (0 at native size, for TAA and without an upscaler).
     [[nodiscard]] float SceneMipBias() const;
@@ -74,6 +78,7 @@ public:
     /// draw's render state (Rasterizer::BeginRendering).
     [[nodiscard]] u64 RedirectState() const noexcept {
         return u64(ui_phase) | u64(display_redirect) << 1 | u64(done_this_frame) << 2 |
+               u64(NativeOutput()) << 3 |
                u64(ui_color.index) << 8 | u64(ui_depth.index) << 36;
     }
 
@@ -212,6 +217,8 @@ private:
     u32 out_width = 0, out_height = 0;     ///< output size of the context
     bool context_hdr = true;
     u32 target_width = 1920, target_height = 1080; ///< output size of scaled presets
+    bool native_output_requested = false; ///< TLG_NATIVE_OUTPUT=1, this process only
+    bool engine_native_output = false; ///< verified regular guest mode; bypass all host proxies
     u64 ui_trigger_vs = 0x34e8a281;
     VideoCore::ImageId ldr_target{};
     VideoCore::ImageId ui_color{}, ui_depth{};
@@ -239,6 +246,7 @@ private:
     std::vector<MirrorView> ui_views;
     struct DisplayImage {
         VideoCore::UniqueImage image;
+        DisplaySurfaceState surface;
         std::vector<MirrorView> views;
         vk::Format format{};
         u32 width = 0, height = 0;

@@ -1,24 +1,31 @@
-# Builds the Linux and Windows packages on every push to main and publishes them as a new
-# release tagged vYYYY.MM.DD-<commit>, marked latest. Every release is kept as version history
-# (the old "nightly" release is removed). A pushed tag v* publishes that tag the same way.
-# No game or console file is ever built in or uploaded.
+# Fork CI builds artifacts only. Releases require an explicit manual dispatch
+# and remain drafts for inspection; no main-branch auto-publication or cleanup.
 name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
     tags: ['v*']
   # Pull requests to main build both packages (artifacts only): the Release is left untouched.
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_draft:
+        description: Create a draft release after both builds pass
+        type: boolean
+        default: false
+      release_tag:
+        description: New candidate tag (must start with v)
+        type: string
+        default: v0.1.0-rc.1
 
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   linux:
@@ -95,6 +102,8 @@ jobs:
             mingw-w64-clang-x86_64-robin-map mingw-w64-clang-x86_64-xxhash mingw-w64-clang-x86_64-ffmpeg
             mingw-w64-clang-x86_64-zydis mingw-w64-clang-x86_64-spirv-tools
             mingw-w64-clang-x86_64-spirv-headers mingw-w64-clang-x86_64-spirv-cross
+      - name: CPU-only release regressions (no game assets)
+        run: python tests/run_release_regressions.py
       - name: Build
         env:
           MSYS2_ROOT: ${{ runner.temp }}/msys64
@@ -118,107 +127,26 @@ jobs:
 
   release:
     needs: [linux, windows]
-    # Only pushes publish (main -> vYYYY.MM.DD-<commit>, v* tags -> that tag); pull requests stop at the artifacts.
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_draft
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            docs/ARQUIVOS_NECESSARIOS.md
-            .github/scripts/release_notes.sh
-          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-      - name: Publish
-        id: publish
+      - name: Create inspected-later draft (never auto-publish)
         run: |
           set -euo pipefail
-          ls -la dist
-          test -f dist/tlg-linux-x86_64.tar.gz && test -f dist/tlg-windows-x86_64.zip
-          short=${GITHUB_SHA::7}
-          cat > notes.md <<NOTES
-          Build automático do commit ${short}. **Nenhum arquivo do jogo incluído**: veja o README-player.md dentro do pacote para o que copiar do seu PS4.
-          Automatic build of commit ${short}. **No game files included**: see README-player.md inside the package for what to copy from your PS4.
-
-          - Linux x86-64 (glibc 2.39+): \`tlg-linux-x86_64.tar.gz\`
-          - Windows 10/11 64-bit: \`tlg-windows-x86_64.zip\` (ainda não testado em jogo / not yet tested in game)
-
-          NOTES
-          # What changed since the previous release (pt-BR + en-US, from the PRs' notes blocks).
-          bash .github/scripts/release_notes.sh "$GITHUB_SHA" >> notes.md || echo "release notes: generation failed"
-          # The list of game files the player needs (docs/ARQUIVOS_NECESSARIOS.md), before the download.
-          sed '1,/^\[Português\]/d' docs/ARQUIVOS_NECESSARIOS.md >> notes.md
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            tag=$GITHUB_REF_NAME
-          else
-            tag="v$(date -u +%Y.%m.%d)-${short}"
-          fi
-          # A re-run of the same commit finds its release already published: keep it.
-          if gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null | grep -qx false; then
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          # Upload into a draft first, so a failed upload never leaves a half-published release.
-          # Releases are kept forever as version history; nothing here deletes one.
-          gh release create "$tag" dist/* --draft --target "$GITHUB_SHA" \
-            --title "$tag ($(date -u +%Y-%m-%d) · ${short})" --notes-file notes.md
-          n=$(gh release view "$tag" --json assets --jq '.assets | length')
-          [[ $n -ge 2 ]] || { echo "draft release has $n assets"; exit 1; }
-          for try in 1 2 3; do
-            gh release edit "$tag" --draft=false --latest && break
-            sleep 10
-          done
-          [[ $(gh release view "$tag" --json isDraft --jq .isDraft) == false ]]
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          # The old rolling "nightly" release is gone: every build is now its own release.
-          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
-      - name: Notify Discord
-        # Posts the new release to #chat-geral. A Discord failure never fails the build.
-        continue-on-error: true
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
-          GAME: The Last Guardian
-        run: |
-          set -euo pipefail
-          [[ -n "${DISCORD_WEBHOOK:-}" ]] || { echo "DISCORD_RELEASE_WEBHOOK not set"; exit 0; }
-          tag=${{ steps.publish.outputs.tag }}; color=5763719
-          short=${GITHUB_SHA::7}
-          url="$GITHUB_SERVER_URL/$GH_REPO/releases/tag/$tag"
-          downloads=$(gh release view "$tag" --json assets \
-            --jq '[.assets[] | "• [\(.name)](\(.url))"] | join("\n")')
-          # One card per release: only the "## Novidades" section of the release notes (the full
-          # notes are one click away). Without that section, the commit message stands in.
-          news=$(gh release view "$tag" --json body --jq .body | tr -d '\r' |
-            awk '/^## Novidades/ { on = 1; next } /^## / { on = 0 } on' |
-            sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba' -e '}')
-          [[ -n $news ]] || news="- $(git log -1 --format=%s "$GITHUB_SHA" 2>/dev/null || echo "Build $short")"
-          jq -n \
-            --arg title "🎮 $GAME: nova versão ($tag)" --arg url "$url" \
-            --arg news "$news" --arg dl "$downloads" --arg commit "Commit $short" \
-            --argjson color "$color" '
-            (if ($news | length) > 3500
-             then ($news[:3500] | sub("\n[^\n]*$"; "")) + "\n… [notas completas](\($url))"
-             else $news end) as $d
-            | {username: "Novas versões", embeds: [{title: $title, url: $url, description: $d, color: $color,
-                fields: [{name: "Downloads", value: $dl}], footer: {text: $commit}}]}' |
-            curl -fsS -H 'Content-Type: application/json' -d @- "$DISCORD_WEBHOOK"
-      - name: Delete older builds
-        # Only after the new release is live: the previous runs and their artifacts go, the
-        # current run (the one that produced this release) stays. Releases are not touched,
-        # apart from leftover nightly-staging drafts of failed runs.
-        if: github.ref == 'refs/heads/main'
-        run: |
-          set -uo pipefail
-          gh release list --limit 100 --json tagName,isDraft \
-            --jq '.[] | select(.isDraft and (.tagName | startswith("nightly-staging-"))) | .tagName' |
-            while read -r t; do gh release delete "$t" --yes || true; done
-          gh run list --workflow build.yml --status completed --limit 200 --json databaseId --jq '.[].databaseId' |
-            grep -vx "$GITHUB_RUN_ID" | xargs -r -n1 gh run delete || true
+          [[ "$RELEASE_TAG" =~ ^v[0-9][0-9A-Za-z._-]*$ ]] || exit 1
+          test -f dist/tlg-linux-x86_64.tar.gz
+          test -f dist/tlg-windows-x86_64.zip
+          gh release create "$RELEASE_TAG" dist/tlg-linux-x86_64.tar.gz dist/tlg-windows-x86_64.zip \
+            --draft --prerelease --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG — experimental candidate" --notes-file CHANGELOG.md
