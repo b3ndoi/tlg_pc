@@ -2,6 +2,12 @@
 
 <h1 align="center">The Last Guardian — port nativo para PC</h1>
 
+> Fork release preparation: Windows fixes and opt-in EU 01.00 60-FPS/native
+> 1440p work are being curated. Normal launcher stays at 30 FPS; this is not a
+> fully validated release. See [release checklist](docs/FIRST_RELEASE.md) and
+> [changelog](CHANGELOG.md). Original authors, credits and license below are
+> retained. No game, firmware or save files are included.
+
 <p align="center">
   <a href="#english"><b>English below</b></a> ·
   <a href="https://github.com/HayatoG/tlg_pc/releases/latest">Download</a> ·
