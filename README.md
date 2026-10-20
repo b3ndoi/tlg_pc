@@ -161,18 +161,40 @@ The [runtime overview](port/README.md), [timing notes](docs/60fps.md) and
 technical documentation is in Portuguese and records earlier experiments;
 use the current release checklist for this fork's supported boundaries.
 
+## Launcher and local achievements
+
+The tabbed launcher separates Play/setup, Video, Controls, Achievements, Session
+log and About. It displays the selected game's title ID/revision rather than a
+fixed US revision label, and keeps the baseline/experimental FPS distinction
+visible. English and Portuguese interface text lives in data-only translation
+catalogs, with English fallback for additional languages.
+
+New trophy-unlock events from games started through this launcher or its
+headless `--play` path can be recorded under
+`user/achievements/<TITLE_ID>.json`. Repeated events are deduplicated. A
+responsive grid reads the owner's local trophy icons and decrypted XML names;
+hidden or unknown entries are masked with a question mark by default. An explicit
+spoiler opt-in can show unknown icons without inventing names or unlocks. No artwork, keys
+or extracted game metadata are bundled. The experimental 60-FPS tracking path
+can opt into native per-user/title persistent unlock queries; 30-FPS/default
+native semantics stay unchanged. Old save/PSN progress and custom challenges
+are **not** guessed or automatically imported.
+
+Optional Windows notifications are off by default. Unlocks still persist if
+Windows suppresses a notification. No existing game/log is attached to or
+backfilled. See the [launcher and achievement guide](docs/LAUNCHER.md).
+
 ## Next steps
 
 1. Publish clear, reproducible test results and prepare an inspected release
    candidate.
-2. Extract interface strings into translation catalogs and improve the startup
-   UI, game-file validation and profile explanations.
-3. Design persistent local achievements and optional notifications. Custom
-   achievements may be considered later; neither custom achievements nor a
-   persistent trophy tracker is implemented in this description update.
+2. Expand translations and test the redesigned launcher on more desktop/DPI
+   configurations; integrate the complete experimental profile separately.
+3. Consider richer local trophy metadata and custom achievements later. No
+   custom challenge rules have been added.
 
-These are planned tasks, not advertised features. No UI, runtime, patch,
-default frame rate or achievement behavior changes in this documentation PR.
+These remaining tasks are not advertised as completed features. The default
+frame rate and native gameplay/timing code remain unchanged by the launcher work.
 
 ## Credits and license
 

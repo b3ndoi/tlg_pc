@@ -32,12 +32,17 @@ done
 out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
     --name "The Last Guardian" --icon "$(cygpath -w "$PWD/launcher/tlg.ico")" --distpath out/pyi-dist \
     --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" \
-    --paths "$(cygpath -w "$PWD/launcher")" "${hidden[@]}" "$(cygpath -w "$PWD/launcher/tlg_launcher.py")"
+    --paths "$(cygpath -w "$PWD/launcher")" \
+    --add-data "$(cygpath -w "$PWD/launcher/locales"):locales" \
+    "${hidden[@]}" "$(cygpath -w "$PWD/launcher/tlg_launcher.py")"
 
 dest=out/stage/$name
 rm -rf -- out/stage
 mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
+for language in en_US pt_BR; do
+    [[ -s "$dest/_internal/locales/$language.json" ]] || { echo "Missing launcher catalog: $language" >&2; exit 1; }
+done
 llvm-strip -o "$dest/Play The Last Guardian.exe" out/tlg-play.exe
 cp launcher/tlg.ico launcher/tlg.png "$dest/launcher/"
 # The executables without debug information, where tlg_run.py looks for them (out/).

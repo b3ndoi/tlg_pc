@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The Last Guardian launcher (Tkinter, Linux and Windows), in pt_BR and en_US.
+"""Tabbed launcher with local trophy observations (Tkinter, Linux and Windows).
 
 Game folder, game and interface language, display, FPS overlay, VRAM budget and native audio;
 Play starts the game through tlg_run.py (the same code path as run_tlg.sh) and shows its log.
 Settings live in ~/.config/tlg-launcher/settings.json (%APPDATA% on Windows).
 """
-import locale
+import copy
+import base64
+from collections import deque
+from datetime import datetime
 import os
 from pathlib import Path
 import queue
@@ -19,113 +22,11 @@ from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tlg_run  # noqa: E402
+import achievements
+from game_library import game_info
+import localization
+import trophy_catalog
 
-TEXT = {
-    'title': ('The Last Guardian — PC', 'The Last Guardian — PC'),
-    'game': ('Game', 'Jogo'),
-    'game_dir': ('Game folder', 'Pasta do jogo'),
-    'system_lib_dir': ('Console system modules', 'Módulos do sistema do console'),
-    'browse': ('Browse…', 'Procurar…'),
-    'language': ('Language', 'Idioma'),
-    'game_language': ('Game language (voice and text)', 'Idioma do jogo (voz e texto)'),
-    'ui_language': ('Interface language', 'Idioma da interface'),
-    'auto': ('Automatic (system)', 'Automático (sistema)'),
-    'video': ('Video', 'Vídeo'),
-    'display_mode': ('Display mode', 'Modo de exibição'),
-    'Windowed': ('Windowed', 'Janela'),
-    'Borderless': ('Borderless window', 'Janela sem borda'),
-    'Fullscreen': ('Fullscreen', 'Tela cheia'),
-    'vsync': ('VSync', 'VSync'),
-    'frame_rate': ('Frame rate (experimental)', 'Taxa de quadros (experimental)'),
-    'fps_30': ('30 FPS (as on PS4)', '30 FPS (como no PS4)'),
-    'fps_60': ('60 FPS', '60 FPS'),
-    'fps_unlocked': ('Unlocked (up to the display)', 'Livre (até a taxa do monitor)'),
-    'fps_hint': ('60/unlocked patch eboot 1.03 in memory; see docs/60fps.md',
-                 '60/livre alteram o eboot 1.03 na memória; ver docs/60fps.md'),
-    'show_fps': ('Show FPS overlay at start (F10 toggles)', 'Mostrar overlay de FPS ao iniciar (F10 alterna)'),
-    'vram': ('Texture cache budget (MB of VRAM)', 'Orçamento do cache de texturas (MB de VRAM)'),
-    'vram_hint': ('6 GB card: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. This is video card memory (VRAM), not RAM; never above your card\'s VRAM.',
-                  'Placa de 6 GB: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. É a memória da placa de vídeo (VRAM), não a RAM; nunca acima da VRAM da placa.'),
-    'filters': ('Image filters (live in the in-game menu too, Insert → Image)',
-                'Filtros de imagem (também no menu do jogo, Insert → Imagem)'),
-    'smaa': ('SMAA anti-aliasing (smooths edges; the HUD too)', 'Anti-aliasing SMAA (suaviza bordas; o HUD também)'),
-    'sharpening': ('Sharpening', 'Nitidez'),
-    'sharpen_off': ('Off', 'Desligada'),
-    'sharpen_rcas': ('RCAS (FSR 1)', 'RCAS (FSR 1)'),
-    'sharpen_cas': ('CAS (AMD)', 'CAS (AMD)'),
-    'color_adjust': ('Color adjustments', 'Ajustes de cor'),
-    'color_brightness': ('Brightness (0 = unchanged)', 'Brilho (0 = sem alteração)'),
-    'color_contrast': ('Contrast (1 = unchanged)', 'Contraste (1 = sem alteração)'),
-    'color_saturation': ('Saturation (1 = unchanged)', 'Saturação (1 = sem alteração)'),
-    'color_gamma': ('Gamma (1 = unchanged)', 'Gama (1 = sem alteração)'),
-    'audio': ('Audio', 'Áudio'),
-    'native_audio': ('Native audio (libSceNgs2.sprx from your console)', 'Áudio nativo (libSceNgs2.sprx do seu console)'),
-    'controls': ('Controls', 'Controles'),
-    'mouse_enabled': ('Mouse turns the camera', 'Mouse gira a câmera'),
-    'mouse_invert_y': ('Invert mouse Y axis', 'Inverter eixo Y do mouse'),
-    'mouse_sensitivity': ('Mouse sensitivity', 'Sensibilidade do mouse'),
-    'mouse_hint': ('Esc releases the mouse; a click in the game window takes it back.',
-                   'Esc solta o mouse; um clique na janela do jogo prende de novo.'),
-    'remap': ('Keyboard and mouse buttons…', 'Teclas e botões do mouse…'),
-    'remap_title': ('Keyboard and mouse buttons', 'Teclas e botões do mouse'),
-    'remap_help': ('Click Set and press a key or mouse button, or type SDL names (Space, Left Shift, '
-                   'Mouse Left, Mouse X1, Wheel Up…). "|" gives several: Q|Mouse Left. "none": no key. '
-                   'Empty: the default (grey). Applies at the next start.',
-                   'Clique em Definir e aperte uma tecla ou botão do mouse, ou digite nomes do SDL (Space, Left Shift, '
-                   'Mouse Left, Mouse X1, Wheel Up…). "|" junta vários: Q|Mouse Left. "none": nenhuma tecla. '
-                   'Vazio: o padrão (cinza). Vale na próxima vez que o jogo abrir.'),
-    'button': ('PS4 button', 'Botão do PS4'),
-    'keys': ('Keys / mouse', 'Teclas / mouse'),
-    'default': ('Default', 'Padrão'),
-    'set': ('Set', 'Definir'),
-    'press': ('Press a key…', 'Aperte uma tecla…'),
-    'reset': ('Reset all', 'Restaurar tudo'),
-    'close': ('Close', 'Fechar'),
-    'play': ('Play', 'Jogar'),
-    'saves': ('Saves folder', 'Pasta de saves'),
-    'logs': ('Logs folder', 'Pasta de logs'),
-    'clear_cache': ('Clear shader cache', 'Limpar cache de shaders'),
-    'clear_cache_ask': ('This deletes the compiled shaders ({size}); the next start takes longer to load and '
-                        'may stutter at first. Continue?',
-                        'Isso apaga os shaders compilados ({size}); a próxima partida demora mais para carregar e '
-                        'pode engasgar no começo. Continuar?'),
-    'clear_cache_empty': ('The shader cache is already empty.', 'O cache de shaders já está vazio.'),
-    'clear_cache_done': ('Shader cache cleared: {size} freed.', 'Cache de shaders limpo: {size} liberados.'),
-    'clear_cache_failed': ('{size} freed, but {count} file(s) could not be deleted (in use? Close the game '
-                           'and try again).',
-                           '{size} liberados, mas {count} arquivo(s) não puderam ser apagados (em uso? Feche o '
-                           'jogo e tente de novo).'),
-    'mods': ('Mods / Cheats…', 'Mods / Cheats…'),
-    'mods_title': ('Mods / Cheats', 'Mods / Cheats'),
-    'mods_hint': ('Drop shadPS4/GoldHEN cheat XML files in the mods folder, then turn them on here. '
-                  'Nothing here changes the game until you enable it.',
-                  'Solte arquivos de cheat XML no formato shadPS4/GoldHEN na pasta de mods e ligue aqui. '
-                  'Nada muda no jogo até você ativar.'),
-    'mods_warning': ('A cheat can crash the game or behave oddly; if that happens, turn it off here.',
-                     'Um cheat pode travar o jogo ou se comportar de forma estranha; se isso acontecer, desligue aqui.'),
-    'mods_folder': ('Open mods folder', 'Abrir pasta de mods'),
-    'mods_refresh': ('Refresh list', 'Atualizar lista'),
-    'mods_empty': ('No cheat XML files found in the mods folder yet.',
-                   'Nenhum arquivo de cheat XML encontrado na pasta de mods ainda.'),
-    'quit': ('Quit', 'Sair'),
-    'ready': ('Ready to play.', 'Pronto para jogar.'),
-    'audio_native': ('Audio: native (console module found).', 'Áudio: nativo (módulo do console encontrado).'),
-    'audio_builtin': ('Audio: built-in mixer, experimental (libSceNgs2.sprx not found or not selected).',
-                      'Áudio: mixer próprio, experimental (libSceNgs2.sprx não encontrado ou desmarcado).'),
-    'missing': ('Missing', 'Faltando'),
-    'not_built': ('Port not built (run build.sh)', 'Port não compilado (rode o build.sh)'),
-    'preparing': ('Preparing the game…', 'Preparando o jogo…'),
-    'running': ('Playing — log:', 'Jogando — log:'),
-    'ended': ('Game closed (exit code {code}).', 'Jogo fechado (código {code}).'),
-    'crashed': ('The game closed with an error (code {code}). The log has the details.',
-                'O jogo fechou com erro (código {code}). Os detalhes estão no log.'),
-    'already': ('The game is already running.', 'O jogo já está rodando.'),
-    'error': ('Error', 'Erro'),
-    'port_by': ('PC port by HayatoG', 'Port para PC por HayatoG'),
-    'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
-    'discord': ('Discord community', 'Comunidade no Discord'),
-    'sponsor': ('♥ Sponsor on GitHub', '♥ Apoie no GitHub'),
-}
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
 SPONSOR_URL = 'https://github.com/sponsors/HayatoG'
@@ -136,17 +37,17 @@ GAME_LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français', 'es_ES': 'Español (E
                        'tr': 'Türkçe', 'ar': 'العربية',
                        'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
                        'fr_CA': 'Français (Canada)'}
-UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
-UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
+UI_LANGUAGES = ['auto', *localization.CATALOGS]
+UI_LANGUAGE_NAMES = localization.NAMES
 DISPLAY_MODES = ['Windowed', 'Borderless', 'Fullscreen']
 # The PS4 buttons the remap dialog lists, with what they do in The Last Guardian when known.
 PS4_BUTTONS = [
-    ('cross', 'Cross (X)', ('jump', 'pular')), ('circle', 'Circle', None), ('square', 'Square', None),
-    ('triangle', 'Triangle', ('grab, hold on', 'agarrar, segurar')), ('l1', 'L1', None),
-    ('r1', 'R1', ('call Trico', 'chamar o Trico')), ('l2', 'L2', None), ('r2', 'R2', None), ('l3', 'L3', None),
-    ('r3', 'R3', None), ('options', 'Options', ('menu', 'menu')),
-    ('touchpad_left', 'Touchpad (left)', ('photo mode', 'modo foto')),
-    ('touchpad_right', 'Touchpad (right)', ('pause', 'pausa')),
+    ('cross', 'Cross (X)', 'action_cross'), ('circle', 'Circle', None), ('square', 'Square', None),
+    ('triangle', 'Triangle', 'action_triangle'), ('l1', 'L1', None),
+    ('r1', 'R1', 'action_r1'), ('l2', 'L2', None), ('r2', 'R2', None), ('l3', 'L3', None),
+    ('r3', 'R3', None), ('options', 'Options', 'action_options'),
+    ('touchpad_left', 'Touchpad (left)', 'action_touchpad_left'),
+    ('touchpad_right', 'Touchpad (right)', 'action_touchpad_right'),
     ('up', 'D-pad up', None), ('down', 'D-pad down', None), ('left', 'D-pad left', None), ('right', 'D-pad right', None),
 ]
 # Tk key names -> SDL key names (src/runtime_pad.c reads SDL names); letters and digits are the same.
@@ -190,14 +91,7 @@ def art_path(settings, name):
 
 
 def system_is_portuguese():
-    for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
-        value = os.environ.get(name)
-        if value:
-            return value.lower().startswith('pt')
-    try:
-        return (locale.getlocale()[0] or '').lower().startswith('pt')
-    except ValueError:
-        return False
+    return localization.language({'ui_language': 'auto'}) == 'pt_BR'
 
 
 class Launcher:
@@ -205,9 +99,16 @@ class Launcher:
         self.root = root
         self.settings = tlg_run.load_settings()
         self.process = None
+        self.process_lock = threading.Lock()
+        self.stopping = threading.Event()
+        self.busy = False
+        self.game_thread = None
+        self.quitting = False
+        self.history = deque(maxlen=2000)
         self.lines = queue.Queue()
         self.build()
         self.root.after(100, self.pump)
+        self.root.protocol('WM_DELETE_WINDOW', self.quit)
 
     # -- language ---------------------------------------------------------------------------
     def pt(self):
@@ -215,128 +116,376 @@ class Launcher:
         return system_is_portuguese() if choice == 'auto' else choice == 'pt_BR'
 
     def t(self, key, **fmt):
-        en, pt = TEXT[key]
-        return (pt if self.pt() else en).format(**fmt)
+        return localization.text(key, localization.language(self.settings), **fmt)
 
     # -- window -----------------------------------------------------------------------------
     def build(self):
-        """Horizontal layout: banner on top; Game + Audio | Language + Video | game log; buttons below."""
+        """Tabbed launcher; building/viewing it never writes preferences or game files."""
+        selected = 'home'
+        if getattr(self, 'notebook', None) and self.notebook.winfo_exists():
+            active = self.notebook.select()
+            selected = next((key for key, page in self.pages.items() if str(page) == active), 'home')
         for child in self.root.winfo_children():
             child.destroy()
         root = self.root
         root.title(self.t('title'))
-        root.minsize(1120, 680)
-        pad = {'padx': 6, 'pady': 4}
-        main = ttk.Frame(root, padding=12)
+        root.minsize(1000, 700)
+        if not getattr(self, 'built', False):
+            root.geometry('1120x780')
+        self.built = True
+        self.configure_style()
+        self.vars = {}
+        self.pages = {}
+        main = ttk.Frame(root, padding=18)
         main.pack(fill='both', expand=True)
-        for column, weight in enumerate((3, 3, 4)):
-            main.columnconfigure(column, weight=weight, uniform='cols' if column < 2 else '')
-        main.rowconfigure(2, weight=1)
+        main.columnconfigure(0, weight=1)
+        main.rowconfigure(1, weight=1)
 
         header = ttk.Frame(main)
-        header.grid(row=0, column=0, columnspan=3, sticky='ew', pady=(0, 8))
+        header.grid(row=0, column=0, sticky='ew', pady=(0, 16))
+        header.columnconfigure(1, weight=1)
         self.load_art()
-        if self.banner:
-            ttk.Label(header, image=self.banner).pack(side='left', padx=(0, 14))
-        titles = ttk.Frame(header)
-        titles.pack(side='left', fill='y')
-        ttk.Label(titles, text='The Last Guardian', font=('TkDefaultFont', 22, 'bold')).pack(anchor='w')
-        ttk.Label(titles, text='PC — CUSA03627 v1.03', foreground='#777').pack(anchor='w')
-        credits = ttk.Frame(header)
-        credits.pack(side='right', anchor='ne')
-        ttk.Label(credits, text=self.t('port_by'), foreground='#777').pack(anchor='e')
-        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL), ('sponsor', SPONSOR_URL)):
-            link = ttk.Label(credits, text=self.t(key), foreground='#2a6fdb', cursor='hand2',
-                             font=('TkDefaultFont', 10, 'underline'))
-            link.pack(anchor='e')
-            link.bind('<Button-1>', lambda _, u=url: webbrowser.open(u))
-        self.status = ttk.Label(titles, text='', foreground='#555', wraplength=420, justify='left')
-        self.status.pack(anchor='w', pady=(10, 0))
+        if getattr(self, 'icon', None):
+            self.header_icon = self.icon.subsample(max(1, (self.icon.width() + 63) // 64))
+            ttk.Label(header, image=self.header_icon).grid(row=0, column=0, rowspan=3, padx=(0, 16))
+        ttk.Label(header, text='The Last Guardian', style='Title.TLabel').grid(row=0, column=1, sticky='w')
+        ttk.Label(header, text=self.t('fork_by'), style='Muted.TLabel').grid(row=1, column=1, sticky='w')
+        self.game_identity = ttk.Label(header, style='Muted.TLabel')
+        self.game_identity.grid(row=2, column=1, sticky='w', pady=(5, 0))
 
-        self.vars = {}
-        left = ttk.Frame(main)
-        left.grid(row=2, column=0, sticky='nsew', **pad)
+        self.notebook = ttk.Notebook(main)
+        self.notebook.grid(row=1, column=0, sticky='nsew')
+        for key in ('home', 'video', 'controls', 'achievements', 'session_log', 'about'):
+            page = ttk.Frame(self.notebook, padding=16)
+            self.pages[key] = page
+            self.notebook.add(page, text=self.t(key))
+        self.notebook.select(self.pages.get(selected, self.pages['home']))
+        self.notebook.bind('<<NotebookTabChanged>>', lambda _: self.refresh_achievements()
+                           if self.notebook.select() == str(self.pages['achievements']) else None)
+        self.build_home(self.pages['home'])
+        self.build_video(self.pages['video'])
+        self.build_controls(self.pages['controls'])
+        self.build_achievements(self.pages['achievements'])
+        self.build_log(self.pages['session_log'])
+        self.build_about(self.pages['about'])
+
+        bottom = ttk.Frame(main)
+        bottom.grid(row=2, column=0, sticky='ew', pady=(14, 0))
+        bottom.columnconfigure(0, weight=1)
+        self.status = ttk.Label(bottom, wraplength=700, justify='left')
+        self.status.grid(row=0, column=0, sticky='w')
+        self.achievement_toast = ttk.Label(bottom, style='Success.TLabel', wraplength=700)
+        self.achievement_toast.grid(row=1, column=0, sticky='w', pady=(5, 0))
+        self.play_button = ttk.Button(bottom, text=self.t('play'), style='Play.TButton', command=self.play)
+        self.play_button.grid(row=0, column=1, rowspan=2, padx=(16, 0), ipadx=28, ipady=9)
+        tools = ttk.Frame(main)
+        tools.grid(row=3, column=0, sticky='ew', pady=(12, 0))
+        ttk.Button(tools, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='left')
+        ttk.Button(tools, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='left', padx=6)
+        self.mods_button = ttk.Button(tools, text=self.t('mods'), command=self.mods_dialog)
+        self.mods_button.pack(side='left')
+        self.cache_button = ttk.Button(tools, text=self.t('clear_cache'), command=self.clear_cache)
+        self.cache_button.pack(side='left', padx=6)
+        ttk.Button(tools, text=self.t('quit'), command=self.quit).pack(side='right')
+        self.config_widgets = []
+        for key in ('home', 'video', 'controls', 'achievements'):
+            self.collect_config_widgets(self.pages[key])
+        self.refresh_achievements()
+        self.refresh_status()
+
+    def configure_style(self):
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use('clam')
+        except tk.TclError:
+            pass
+        self.root.configure(background='#11191f')
+        style.configure('.', background='#11191f', foreground='#e6eef3',
+                        font=('Segoe UI' if os.name == 'nt' else 'TkDefaultFont', 10))
+        style.configure('TFrame', background='#11191f')
+        style.configure('TLabel', background='#11191f')
+        style.configure('Muted.TLabel', foreground='#a9bac6')
+        style.configure('Success.TLabel', foreground='#8bdcc0')
+        style.configure('Title.TLabel', font=('TkDefaultFont', 24, 'bold'))
+        style.configure('TLabelframe', background='#11191f', bordercolor='#33444f')
+        style.configure('TLabelframe.Label', background='#11191f', foreground='#c5d6e0')
+        for name in ('TButton', 'TCheckbutton', 'TNotebook.Tab'):
+            style.configure(name, background='#22313d', foreground='#e6eef3', padding=(10, 6))
+            style.map(name, background=[('active', '#304652')], foreground=[('disabled', '#80939e')])
+        for name in ('TEntry', 'TCombobox', 'TSpinbox'):
+            style.configure(name, fieldbackground='#1d2c36', foreground='#e6eef3',
+                            insertcolor='#e6eef3', selectbackground='#3b615f')
+            style.map(name, fieldbackground=[('readonly', '#1d2c36'), ('disabled', '#19232b')],
+                      foreground=[('disabled', '#80939e')])
+        style.configure('TNotebook', background='#11191f', borderwidth=0)
+        style.map('TNotebook.Tab', background=[('selected', '#304b50')])
+        style.configure('Play.TButton', font=('TkDefaultFont', 12, 'bold'),
+                        background='#80d4ba', foreground='#11251f')
+        style.map('Play.TButton', background=[('disabled', '#263d3c'), ('active', '#a5e5d1')],
+                  foreground=[('disabled', '#839e96')])
+        style.configure('Treeview', background='#1d2c36', fieldbackground='#1d2c36',
+                        foreground='#e6eef3', rowheight=28, borderwidth=0)
+        style.configure('Treeview.Heading', background='#263b47', foreground='#e6eef3', padding=6)
+        style.map('Treeview', background=[('selected', '#315751')])
+        self.root.option_add('*TCombobox*Listbox.background', '#1d2c36')
+        self.root.option_add('*TCombobox*Listbox.foreground', '#e6eef3')
+        self.root.option_add('*TCombobox*Listbox.selectBackground', '#315751')
+
+    def build_home(self, page):
+        page.columnconfigure(0, weight=3, uniform='home')
+        page.columnconfigure(1, weight=2, uniform='home')
+        left = ttk.Frame(page)
+        left.grid(row=0, column=0, sticky='nsew', padx=(0, 16))
         left.columnconfigure(0, weight=1)
-        game = ttk.LabelFrame(left, text=self.t('game'), padding=8)
-        game.grid(sticky='ew', pady=(0, 8))
+        game = ttk.LabelFrame(left, text=self.t('game'), padding=12)
+        game.grid(row=0, column=0, sticky='ew')
         game.columnconfigure(0, weight=1)
         for row, key in enumerate(('game_dir', 'system_lib_dir')):
             ttk.Label(game, text=self.t(key)).grid(row=row * 2, column=0, columnspan=2, sticky='w')
             var = tk.StringVar(value=self.settings[key])
             var.trace_add('write', lambda *_: self.changed())
             self.vars[key] = var
-            ttk.Entry(game, textvariable=var).grid(row=row * 2 + 1, column=0, sticky='ew', pady=(0, 6))
+            ttk.Entry(game, textvariable=var).grid(row=row * 2 + 1, column=0, sticky='ew', pady=(4, 10))
             ttk.Button(game, text=self.t('browse'), command=lambda k=key: self.browse(k)).grid(
-                row=row * 2 + 1, column=1, padx=(6, 0), pady=(0, 6))
-        audio = ttk.LabelFrame(left, text=self.t('audio'), padding=8)
-        audio.grid(sticky='ew', pady=(0, 8))
-        self.check(audio, 0, 'native_audio')
-        controls = ttk.LabelFrame(left, text=self.t('controls'), padding=8)
-        controls.grid(sticky='ew')
-        controls.columnconfigure(1, weight=1)
-        self.check(controls, 0, 'mouse_enabled')
-        self.check(controls, 1, 'mouse_invert_y')
-        ttk.Label(controls, text=self.t('mouse_sensitivity')).grid(row=2, column=0, sticky='w', pady=(4, 0))
-        sens = tk.DoubleVar(value=float(self.settings.get('mouse_sensitivity', 1.0)))
-        self.vars['mouse_sensitivity'] = sens
-        sens_spin = ttk.Spinbox(controls, from_=0.1, to=5.0, increment=0.1, format='%.2f', textvariable=sens,
-                                width=6, command=self.changed)
-        sens_spin.grid(row=2, column=1, sticky='w', padx=6, pady=(4, 0))
-        sens_spin.bind('<FocusOut>', lambda _: self.changed())
-        ttk.Button(controls, text=self.t('remap'), command=self.remap_dialog).grid(row=2, column=2, sticky='e', pady=(4, 0))
-        ttk.Label(controls, text=self.t('mouse_hint'), foreground='#777', wraplength=420, justify='left').grid(
-            row=3, column=0, columnspan=3, sticky='w', pady=(2, 0))
-
-        middle = ttk.Frame(main)
-        middle.grid(row=2, column=1, sticky='nsew', **pad)
-        middle.columnconfigure(0, weight=1)
-        lang = ttk.LabelFrame(middle, text=self.t('language'), padding=8)
-        lang.grid(sticky='ew', pady=(0, 8))
-        lang.columnconfigure(1, weight=1)
+                row=row * 2 + 1, column=1, padx=(8, 0), pady=(4, 10))
+        language = ttk.LabelFrame(left, text=self.t('language'), padding=12)
+        language.grid(row=1, column=0, sticky='ew', pady=12)
+        language.columnconfigure(1, weight=1)
         self.game_lang_box = None
-        self.build_game_language(lang)
-        self.combo(lang, 1, 'ui_language', UI_LANGUAGES,
-                   lambda k: self.t('auto') if k == 'auto' else UI_LANGUAGE_NAMES[k], on_change=self.build)
-        video = ttk.LabelFrame(middle, text=self.t('video'), padding=8)
-        video.grid(sticky='ew')
-        video.columnconfigure(1, weight=1)
-        self.combo(video, 0, 'display_mode', DISPLAY_MODES, lambda k: self.t(k))
-        self.check(video, 1, 'vsync')
-        self.check(video, 2, 'show_fps')
-        self.combo(video, 5, 'frame_rate', tlg_run.FRAME_RATES, lambda k: self.t(f'fps_{k}'))
-        ttk.Label(video, text=self.t('fps_hint'), foreground='#777', wraplength=320).grid(
-            row=6, column=0, columnspan=2, sticky='w')
-        ttk.Label(video, text=self.t('vram'), wraplength=220).grid(row=3, column=0, sticky='w', pady=(6, 0))
+        self.build_game_language(language)
+        self.combo(language, 1, 'ui_language', UI_LANGUAGES,
+                   lambda key: self.t('auto') if key == 'auto' else UI_LANGUAGE_NAMES[key], on_change=self.build)
+        audio = ttk.LabelFrame(left, text=self.t('audio'), padding=12)
+        audio.grid(row=2, column=0, sticky='ew')
+        self.check(audio, 0, 'native_audio')
+        right = ttk.Frame(page)
+        right.grid(row=0, column=1, sticky='nsew')
+        ttk.Label(right, text=self.t('setup_hint'), wraplength=340, justify='left').pack(anchor='w', pady=(0, 16))
+        self.frame_summary = ttk.Label(right, style='Success.TLabel', wraplength=340)
+        self.frame_summary.pack(anchor='w', pady=(0, 10))
+        ttk.Label(right, text=self.t('baseline_hint'), style='Muted.TLabel',
+                  wraplength=340, justify='left').pack(anchor='w', pady=(0, 16))
+        ttk.Label(right, text=self.t('settings_notice'), style='Muted.TLabel',
+                  wraplength=340, justify='left').pack(anchor='w')
+
+    def build_video(self, page):
+        page.columnconfigure(1, weight=1)
+        self.combo(page, 0, 'display_mode', DISPLAY_MODES, lambda key: self.t(key))
+        self.check(page, 1, 'vsync')
+        self.check(page, 2, 'show_fps')
+        self.combo(page, 3, 'frame_rate', tlg_run.FRAME_RATES, lambda key: self.t('fps_' + key))
+        ttk.Label(page, text=self.t('fps_hint'), style='Muted.TLabel',
+                  wraplength=880, justify='left').grid(row=4, column=0, columnspan=3, sticky='w', pady=(6, 12))
+        ttk.Label(page, text=self.t('vram')).grid(row=5, column=0, sticky='w')
         vram = tk.IntVar(value=int(self.settings['vram_budget_mb']))
         self.vars['vram_budget_mb'] = vram
-        spin = ttk.Spinbox(video, from_=2000, to=24000, increment=200, textvariable=vram, width=8,
-                           command=self.changed)
-        spin.grid(row=3, column=1, sticky='w', padx=6, pady=(6, 0))
+        spin = ttk.Spinbox(page, from_=2000, to=24000, increment=200, textvariable=vram,
+                           width=8, command=self.changed)
+        spin.grid(row=5, column=1, sticky='w', padx=6)
         spin.bind('<FocusOut>', lambda _: self.changed())
-        ttk.Label(video, text=self.t('vram_hint'), foreground='#777', wraplength=360).grid(row=4, column=0, columnspan=2, sticky='w')
-        self.build_filters(video, 7)
+        ttk.Label(page, text=self.t('vram_hint'), style='Muted.TLabel', wraplength=880,
+                  justify='left').grid(row=6, column=0, columnspan=3, sticky='w', pady=(6, 8))
+        self.build_filters(page, 7)
 
-        log_frame = ttk.LabelFrame(main, text='Log', padding=4)
-        log_frame.grid(row=2, column=2, sticky='nsew', **pad)
-        self.log = tk.Text(log_frame, wrap='none', font=('TkFixedFont', 9), state='disabled', width=60)
-        scroll = ttk.Scrollbar(log_frame, command=self.log.yview)
+    def build_controls(self, page):
+        page.columnconfigure(1, weight=1)
+        self.check(page, 0, 'mouse_enabled')
+        self.check(page, 1, 'mouse_invert_y')
+        ttk.Label(page, text=self.t('mouse_sensitivity')).grid(row=2, column=0, sticky='w', pady=10)
+        sensitivity = tk.DoubleVar(value=float(self.settings.get('mouse_sensitivity', 1.0)))
+        self.vars['mouse_sensitivity'] = sensitivity
+        spin = ttk.Spinbox(page, from_=0.1, to=5.0, increment=0.1, format='%.2f',
+                           textvariable=sensitivity, width=6, command=self.changed)
+        spin.grid(row=2, column=1, sticky='w', padx=6)
+        spin.bind('<FocusOut>', lambda _: self.changed())
+        ttk.Button(page, text=self.t('remap'), command=self.remap_dialog).grid(row=3, column=0, sticky='w', pady=12)
+        ttk.Label(page, text=self.t('mouse_hint'), style='Muted.TLabel', wraplength=860).grid(
+            row=4, column=0, columnspan=3, sticky='w')
+
+    def build_achievements(self, page):
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(5, weight=1)
+        ttk.Label(page, text=self.t('local_only'), style='Success.TLabel').grid(row=0, column=0, sticky='w')
+        self.check(page, 1, 'track_achievements')
+        notification = tk.BooleanVar(value=self.settings.get('achievement_notifications', False))
+        self.vars['achievement_notifications'] = notification
+        self.notification_box = ttk.Checkbutton(page, text=self.t('achievement_notifications'),
+                                                variable=notification, command=self.changed)
+        self.notification_box.grid(row=2, column=0, sticky='w', pady=2)
+        ttk.Label(page, text=self.t('notification_hint'), style='Muted.TLabel', wraplength=880,
+                  justify='left').grid(row=3, column=0, sticky='w', pady=(4, 10))
+        self.achievement_summary = ttk.Label(page, wraplength=880)
+        self.achievement_summary.grid(row=4, column=0, sticky='w', pady=(0, 8))
+        table = ttk.Frame(page)
+        table.grid(row=5, column=0, sticky='nsew')
+        table.columnconfigure(0, weight=1)
+        table.rowconfigure(0, weight=1)
+        self.achievement_canvas = tk.Canvas(table, background='#11191f', highlightthickness=0)
+        self.achievement_grid = ttk.Frame(self.achievement_canvas)
+        self.achievement_window = self.achievement_canvas.create_window(0, 0, window=self.achievement_grid, anchor='nw')
+        self.achievement_cards, self.achievement_views, self.achievement_images = {}, {}, []
+        self.achievement_columns = 0
+        scrollbar = ttk.Scrollbar(table, orient='vertical', command=self.achievement_canvas.yview)
+        self.achievement_canvas.configure(yscrollcommand=scrollbar.set)
+        self.achievement_canvas.grid(row=0, column=0, sticky='nsew')
+        self.achievement_grid.bind('<Configure>', lambda _: self.achievement_canvas.configure(
+            scrollregion=self.achievement_canvas.bbox('all')))
+        self.achievement_canvas.bind('<Configure>', self.layout_achievements)
+        self.achievement_canvas.bind('<MouseWheel>', lambda event: self.achievement_canvas.yview_scroll(
+            -int(event.delta / 120), 'units'))
+        scrollbar.grid(row=0, column=1, sticky='ns')
+        ttk.Label(page, text=self.t('achievement_help'), style='Muted.TLabel',
+                  wraplength=880, justify='left').grid(row=6, column=0, sticky='w', pady=10)
+        actions = ttk.Frame(page)
+        actions.grid(row=7, column=0, sticky='ew')
+        ttk.Button(actions, text=self.t('refresh'), command=self.refresh_achievements).pack(side='left')
+        ttk.Button(actions, text=self.t('trophy_metadata'), command=self.choose_trophy_metadata).pack(side='left', padx=8)
+        show_icons = tk.BooleanVar(value=self.settings.get('trophy_show_unknown_icons', False))
+        self.vars['trophy_show_unknown_icons'] = show_icons
+        ttk.Checkbutton(actions, text=self.t('trophy_show_unknown_icons'), variable=show_icons,
+                        command=self.trophy_icons_changed).pack(side='left', padx=8)
+
+    def trophy_icons_changed(self):
+        if self.busy:
+            return
+        self.changed()
+        self.refresh_achievements()
+
+    def layout_achievements(self, event=None):
+        if not getattr(self, 'achievement_canvas', None):
+            return
+        width = event.width if event else self.achievement_canvas.winfo_width()
+        self.achievement_canvas.itemconfigure(self.achievement_window, width=max(1, width))
+        columns = max(1, width // 230)
+        if columns == self.achievement_columns:
+            return
+        for column in range(max(columns, self.achievement_columns)):
+            self.achievement_grid.columnconfigure(column, weight=1 if column < columns else 0,
+                                                   uniform='trophies' if column < columns else '')
+        self.achievement_columns = columns
+        for index, card in enumerate(self.achievement_cards.values()):
+            card.grid(row=index // columns, column=index % columns, sticky='nsew', padx=5, pady=5)
+
+    def choose_trophy_metadata(self):
+        if self.busy:
+            return
+        folder = filedialog.askdirectory(title=self.t('trophy_metadata'))
+        if not folder:
+            return
+        try:
+            catalog = trophy_catalog.Catalog(self.settings['game_dir'], folder,
+                                             localization.language(self.settings))
+            if not catalog.complete:
+                raise trophy_catalog.CatalogError(self.t('metadata_needed'))
+        except (OSError, trophy_catalog.CatalogError) as error:
+            messagebox.showerror(self.t('error'), str(error))
+            return
+        self.settings['trophy_metadata_dir'] = folder
+        tlg_run.save_settings(self.settings)
+        self.refresh_achievements()
+
+    def refresh_achievements(self):
+        if not getattr(self, 'achievement_grid', None):
+            return
+        for card in self.achievement_grid.winfo_children():
+            card.destroy()
+        self.achievement_cards, self.achievement_views, self.achievement_images = {}, {}, []
+        self.achievement_columns = 0
+        info = game_info(self.settings.get('game_dir'))
+        if not info:
+            self.achievement_summary.configure(text=self.t('achievement_missing'))
+            return
+        try:
+            records = achievements.Store(tlg_run.USER_DIR, info['title_id']).read()
+            catalog = trophy_catalog.Catalog(self.settings['game_dir'], self.settings.get('trophy_metadata_dir', ''),
+                                             localization.language(self.settings))
+        except (OSError, achievements.StoreError, trophy_catalog.CatalogError) as error:
+            self.achievement_summary.configure(text=self.t('achievement_error', error=str(error)))
+            return
+        for key in records:
+            catalog.trophies.setdefault(int(key), dict(id=int(key), known=False, hidden=True,
+                                                       name='', detail='', grade=''))
+        unlocked_count = sum(str(key) in records for key in catalog.trophies)
+        text = self.t('trophy_progress', count=unlocked_count, total=len(catalog.trophies)) if catalog.trophies else self.t('achievement_empty')
+        if catalog.trophies and not catalog.complete:
+            text += '  ' + self.t('metadata_icons_only' if self.settings.get('trophy_show_unknown_icons', False)
+                                   else 'metadata_needed')
+        self.achievement_summary.configure(text=text)
+        for key, entry in sorted(catalog.trophies.items()):
+            unlocked = str(key) in records
+            try:
+                view = catalog.view(key, unlocked, self.settings.get('trophy_show_unknown_icons', False))
+            except (OSError, trophy_catalog.CatalogError):
+                view = dict(id=key, masked=not entry['known'] or entry['hidden'] and not unlocked,
+                            unlocked=unlocked, name=entry['name'], detail=entry['detail'], grade=entry['grade'], icon=None)
+                if view['masked']:
+                    view.update(name='', detail='', grade='')
+            self.achievement_views[key] = view
+            card = ttk.LabelFrame(self.achievement_grid, padding=12)
+            self.achievement_cards[key] = card
+            name = (self.t('hidden_trophy') if entry['known'] else self.t('trophy_name', id=key)) if view['masked'] else view['name']
+            icon = ttk.Label(card, text='?' if view['masked'] else '\u25c7', anchor='center',
+                             font=('TkDefaultFont', 30, 'bold'))
+            icon.pack(fill='x', pady=(0, 8))
+            if view['icon']:
+                try:
+                    image = tk.PhotoImage(data=base64.b64encode(view['icon']).decode('ascii'))
+                    image = image.subsample(max(1, (max(image.width(), image.height()) + 71) // 72))
+                    self.achievement_images.append(image)
+                    icon.configure(image=image, text='')
+                except tk.TclError:
+                    pass
+            ttk.Label(card, text=name, wraplength=190, justify='center', anchor='center').pack(fill='x')
+            ttk.Label(card, text=self.t('trophy_unlocked' if unlocked else 'trophy_locked'),
+                      style='Success.TLabel' if unlocked else 'Muted.TLabel', anchor='center').pack(fill='x', pady=5)
+            if view['detail']:
+                ttk.Label(card, text=view['detail'], wraplength=190, justify='left',
+                          style='Muted.TLabel').pack(fill='x', pady=5)
+            if unlocked:
+                date = datetime.fromisoformat(records[str(key)]['unlocked_at']).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                ttk.Label(card, text=date, style='Muted.TLabel', anchor='center').pack(fill='x')
+            for widget in (card, *card.winfo_children()):
+                widget.bind('<MouseWheel>', lambda event: self.achievement_canvas.yview_scroll(
+                    -int(event.delta / 120), 'units'))
+                widget.bind('<Button-4>', lambda _: self.achievement_canvas.yview_scroll(-1, 'units'))
+                widget.bind('<Button-5>', lambda _: self.achievement_canvas.yview_scroll(1, 'units'))
+        self.layout_achievements()
+
+    def build_log(self, page):
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(0, weight=1)
+        self.log = tk.Text(page, wrap='word', font=('TkFixedFont', 10), state='disabled',
+                           background='#16212a', foreground='#d1e2ea', insertbackground='#d1e2ea',
+                           selectbackground='#315751', relief='flat', padx=12, pady=10)
+        scroll = ttk.Scrollbar(page, command=self.log.yview)
         self.log.configure(yscrollcommand=scroll.set)
-        self.log.pack(side='left', fill='both', expand=True)
-        scroll.pack(side='right', fill='y')
+        self.log.grid(row=0, column=0, sticky='nsew')
+        scroll.grid(row=0, column=1, sticky='ns')
+        self.log.configure(state='normal')
+        self.log.insert('end', ''.join(self.history))
+        self.log.configure(state='disabled')
 
-        buttons = ttk.Frame(main)
-        buttons.grid(row=3, column=0, columnspan=3, sticky='ew', pady=(10, 0))
-        ttk.Button(buttons, text=self.t('quit'), command=self.quit).pack(side='left')
-        style = ttk.Style()
-        style.configure('Play.TButton', font=('TkDefaultFont', 13, 'bold'))
-        self.play_button = ttk.Button(buttons, text=self.t('play'), style='Play.TButton', command=self.play)
-        self.play_button.pack(side='right', ipadx=30, ipady=8)
-        ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
-        ttk.Button(buttons, text=self.t('mods'), command=self.mods_dialog).pack(side='right', padx=6)
-        ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
-        self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
-        self.cache_button.pack(side='right', padx=(0, 6))
-        self.refresh_status()
+    def build_about(self, page):
+        page.columnconfigure(0, weight=1)
+        for row, key in enumerate(('fork_by', 'credits_detail', 'legal_detail', 'experimental_warning')):
+            ttk.Label(page, text=self.t(key), wraplength=880, justify='left',
+                      style='TLabel' if row == 0 else 'Muted.TLabel').grid(row=row, column=0, sticky='w', pady=(0, 16))
+        for row, (key, url) in enumerate((('project_page', 'https://github.com/b3ndoi/tlg_pc'),
+                                          ('upstream_page', 'https://github.com/HayatoG/tlg_pc'),
+                                          ('channel', CHANNEL_URL), ('discord', DISCORD_URL),
+                                          ('sponsor', SPONSOR_URL)), 4):
+            link = ttk.Label(page, text=self.t(key), foreground='#89d8c2', cursor='hand2',
+                             font=('TkDefaultFont', 10, 'underline'))
+            link.grid(row=row, column=0, sticky='w', pady=4)
+            link.bind('<Button-1>', lambda _, target=url: webbrowser.open(target))
+
+    def collect_config_widgets(self, parent):
+        for child in parent.winfo_children():
+            if isinstance(child, (ttk.Entry, ttk.Combobox, ttk.Spinbox, ttk.Checkbutton, ttk.Button)):
+                # Refreshing the achievement list is read-only and remains available.
+                if parent is not self.pages['achievements'] or not isinstance(child, ttk.Button):
+                    self.config_widgets.append(child)
+            self.collect_config_widgets(child)
 
     def load_art(self):
         """Window icon (the port's tlg.png) and a 480x135 banner (a band of pic1.png from the dump, when present)."""
@@ -363,7 +512,7 @@ class Launcher:
     def build_filters(self, parent, row):
         """SMAA, sharpening and color adjustments, read from and written to tlg.ini right away."""
         ttk.Separator(parent).grid(row=row, column=0, columnspan=2, sticky='ew', pady=(8, 4))
-        ttk.Label(parent, text=self.t('filters'), foreground='#555', wraplength=360).grid(
+        ttk.Label(parent, text=self.t('filters'), style='Muted.TLabel', wraplength=360).grid(
             row=row + 1, column=0, columnspan=2, sticky='w')
         ini = dict(INI_DEFAULTS)
         ini.update({k: v for k, v in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini').items() if k in ini})
@@ -390,6 +539,8 @@ class Launcher:
             spin.bind('<FocusOut>', lambda _: self.filters_changed())
 
     def filters_changed(self):
+        if self.busy:
+            return
         values = {'smaa': int(self.ini_vars['smaa'].get()), 'color_adjust': int(self.ini_vars['color_adjust'].get()),
                   'rcas': int(self.sharpener.current() == 1), 'cas': int(self.sharpener.current() == 2)}
         for key, (low, high) in COLOR_RANGES.items():
@@ -410,6 +561,8 @@ class Launcher:
         box.grid(row=row, column=1, sticky='w', padx=6, pady=2)
 
         def picked(_):
+            if self.busy:
+                return
             self.settings[key] = values[box.current()]
             tlg_run.save_settings(self.settings)
             if on_change:
@@ -429,6 +582,8 @@ class Launcher:
         self.refresh_language_choices()
 
     def picked_language(self, _=None):
+        if self.busy:
+            return
         values = self.game_lang_values
         self.settings['game_language'] = values[self.game_lang_box.current()]
         tlg_run.save_settings(self.settings)
@@ -448,8 +603,7 @@ class Launcher:
             current = values[0]
         self.game_lang_box.current(values.index(current))
         if current != self.settings.get('game_language'):
-            self.settings['game_language'] = current
-            tlg_run.save_settings(self.settings)
+            self.settings['game_language'] = current  # in-memory fallback; save only on user action
 
     def remap_dialog(self):
         """PS4 button -> keys and mouse buttons (tlg.ini key_map through tlg_run.launch)."""
@@ -500,7 +654,7 @@ class Launcher:
 
         for index, (button, name, action) in enumerate(PS4_BUTTONS):
             row, column = index % half + 1, 0 if index < half else 4
-            label = name if not action else f'{name} — {action[1] if self.pt() else action[0]}'
+            label = name if not action else f'{name} — {self.t(action)}'
             ttk.Label(frame, text=label).grid(row=row, column=column, sticky='w', padx=(0, 6), pady=1)
             entry = ttk.Entry(frame, width=20)
             entry.insert(0, mapping.get(button, ''))
@@ -511,9 +665,9 @@ class Launcher:
             set_button = ttk.Button(frame, text=self.t('set'), width=10)
             set_button.configure(command=lambda b=button, e=entry, s=set_button: capture(b, e, s))
             set_button.grid(row=row, column=column + 2, padx=4, pady=1)
-            ttk.Label(frame, text=tlg_run.DEFAULT_KEYS[button], foreground='#888').grid(
+            ttk.Label(frame, text=tlg_run.DEFAULT_KEYS[button], style='Muted.TLabel').grid(
                 row=row, column=column + 3, sticky='w', padx=(0, 18))
-        ttk.Label(frame, text=self.t('remap_help'), foreground='#555', wraplength=760, justify='left').grid(
+        ttk.Label(frame, text=self.t('remap_help'), style='Muted.TLabel', wraplength=760, justify='left').grid(
             row=half + 1, column=0, columnspan=8, sticky='w', pady=(10, 6))
         bottom = ttk.Frame(frame)
         bottom.grid(row=half + 2, column=0, columnspan=8, sticky='ew')
@@ -543,12 +697,12 @@ class Launcher:
         frame = ttk.Frame(win, padding=12)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, text=self.t('mods_hint'), wraplength=520, justify='left').pack(anchor='w')
-        ttk.Label(frame, text=self.t('mods_warning'), foreground='#a33', wraplength=520, justify='left').pack(
+        ttk.Label(frame, text=self.t('mods_warning'), foreground='#f2a8a8', wraplength=520, justify='left').pack(
             anchor='w', pady=(4, 8))
 
         list_frame = ttk.Frame(frame)
         list_frame.pack(fill='both', expand=True)
-        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        canvas = tk.Canvas(list_frame, highlightthickness=0, background='#11191f')
         scroll = ttk.Scrollbar(list_frame, orient='vertical', command=canvas.yview)
         rows = ttk.Frame(canvas)
         rows.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
@@ -567,9 +721,9 @@ class Launcher:
                 mods = tlg_run.list_mods(self.settings)
             except Exception as error:  # a malformed XML file is reported, never crashes the launcher
                 mods = []
-                ttk.Label(rows, text=str(error), foreground='#a33').pack(anchor='w')
+                ttk.Label(rows, text=str(error), foreground='#f2a8a8').pack(anchor='w')
             if not mods:
-                ttk.Label(rows, text=self.t('mods_empty'), foreground='#777').pack(anchor='w', pady=8)
+                ttk.Label(rows, text=self.t('mods_empty'), style='Muted.TLabel').pack(anchor='w', pady=8)
             for key, name, note, enabled in mods:
                 row = ttk.Frame(rows)
                 row.pack(fill='x', anchor='w', pady=2)
@@ -577,7 +731,7 @@ class Launcher:
                 ttk.Checkbutton(row, text=name or key, variable=var,
                                 command=lambda k=key, v=var: toggle(k, v)).pack(anchor='w')
                 if note:
-                    ttk.Label(row, text=note, foreground='#777', wraplength=480, justify='left').pack(
+                    ttk.Label(row, text=note, style='Muted.TLabel', wraplength=480, justify='left').pack(
                         anchor='w', padx=(22, 0))
         populate()
 
@@ -595,6 +749,8 @@ class Launcher:
 
     # -- actions ----------------------------------------------------------------------------
     def changed(self):
+        if self.busy:
+            return
         for key, var in self.vars.items():
             try:
                 self.settings[key] = var.get()
@@ -612,9 +768,21 @@ class Launcher:
         else:
             text = self.t('ready')
         audio = self.t('audio_native') if tlg_run.ngs2_module(self.settings) else self.t('audio_builtin')
-        self.status.configure(text=f'{text}  {audio}')
-        self.play_button.configure(state='disabled' if problems or self.process else 'normal')
-        self.cache_button.configure(state='disabled' if self.process else 'normal')
+        self.status.configure(text=self.t('preparing_status') if self.busy and self.process is None
+                              else self.t('playing_status') if self.busy else f'{text}  {audio}')
+        info = game_info(self.settings.get('game_dir'))
+        self.game_identity.configure(text=self.t('identity', title=info['title_id'],
+                                                 version=info['version'] or self.t('version_unknown'))
+                                     if info else self.t('identity_unknown'))
+        self.frame_summary.configure(text=self.t('selected_mode', mode=self.t('fps_' + tlg_run.frame_rate(self.settings)))
+                                     if tlg_run.frame_rate(self.settings) in tlg_run.FRAME_RATES else self.t('baseline_hint'))
+        for widget in self.config_widgets:
+            widget.state(['disabled'] if self.busy else ['!disabled'])
+        if os.name != 'nt':
+            self.notification_box.state(['disabled'])
+        self.play_button.configure(state='disabled' if problems or self.busy else 'normal')
+        self.cache_button.configure(state='disabled' if self.busy else 'normal')
+        self.mods_button.configure(state='disabled' if self.busy else 'normal')
 
     def browse(self, key):
         path = filedialog.askdirectory(initialdir=self.vars[key].get() or str(Path.home()))
@@ -630,7 +798,7 @@ class Launcher:
 
     def clear_cache(self):
         """Clear shader cache: asks first, never while the game runs; shows how much was freed."""
-        if self.process:
+        if self.busy:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
         size = tlg_run.shader_cache_size(self.settings)
@@ -655,6 +823,7 @@ class Launcher:
         self.append(message)
 
     def append(self, line):
+        self.history.append(line if line.endswith('\n') else line + '\n')
         self.log.configure(state='normal')
         self.log.insert('end', line if line.endswith('\n') else line + '\n')
         if int(self.log.index('end-1c').split('.')[0]) > 2000:
@@ -663,45 +832,74 @@ class Launcher:
         self.log.configure(state='disabled')
 
     def play(self):
-        if self.process:
+        if self.busy:
             messagebox.showinfo(self.t('title'), self.t('already'))
             return
         self.changed()
-        self.append(self.t('preparing'))
-        self.play_button.configure(state='disabled')
-        self.cache_button.configure(state='disabled')
-        threading.Thread(target=self.run_game, daemon=True).start()
-
-    def run_game(self):
-        try:
-            tlg_run.prepare(self.settings, log=lambda line: self.lines.put(line))
-            self.process, log = tlg_run.launch(self.settings)
-        except Exception as error:  # shown to the user, the launcher keeps running
-            self.lines.put(('error', str(error)))
+        if tlg_run.check_game(self.settings['game_dir']):
+            self.refresh_status()
             return
-        self.lines.put(f"{self.t('running')} {log}")
-        with open(log, 'w', encoding='utf-8') as out:
-            out.write(f'Frame rate: requested {tlg_run.frame_rate(self.settings)}, applied {tlg_run.applied_frame_rate}\n')
-            for line in self.process.stdout:
-                out.write(line)
-                out.flush()
-                self.lines.put(line.rstrip('\n'))
-        code = self.process.wait()
-        self.process = None
-        self.lines.put(('ended', code))
+        for name in ('remap_window', 'mods_window'):
+            dialog = getattr(self, name, None)
+            if dialog is not None and dialog.winfo_exists():
+                dialog.destroy()  # do not leave an editable dialog open during preparation
+        self.busy = True
+        self.stopping.clear()
+        self.append(self.t('preparing'))
+        self.refresh_status()
+        snapshot = copy.deepcopy(self.settings)
+        self.game_thread = threading.Thread(target=self.run_game, args=(snapshot,), daemon=True)
+        try:
+            self.game_thread.start()
+        except RuntimeError as error:
+            self.game_thread = None
+            self.busy = False
+            self.refresh_status()
+            messagebox.showerror(self.t('error'), str(error))
+
+    def run_game(self, settings):
+        try:
+            tlg_run.prepare(settings, log=lambda line: self.lines.put(line))
+            with self.process_lock:
+                if self.stopping.is_set():
+                    return
+                self.process, log = tlg_run.launch(settings)
+            self.lines.put(f"{self.t('running')} {log}")
+            code = tlg_run.copy_output(self.process, log, settings,
+                                       lambda line: self.lines.put(line.rstrip('\n')),
+                                       on_unlock=lambda event: self.lines.put(('achievement', event)),
+                                       notes=[f'Frame rate: requested {tlg_run.frame_rate(settings)}, applied {tlg_run.applied_frame_rate}'])
+            with self.process_lock:
+                self.process = None
+            self.lines.put(('ended', code))
+        except Exception as error:
+            self.lines.put(('error', str(error)))
 
     def pump(self):
         try:
-            while True:
+            for _ in range(200):  # allow UI input/timers through during verbose logging
                 item = self.lines.get_nowait()
                 if isinstance(item, tuple):
                     kind, value = item
+                    if kind == 'achievement':
+                        self.refresh_achievements()
+                        message = self.t('achievement_saved', id=value['id'])
+                        self.achievement_toast.configure(text=message)
+                        self.append(message)
+                        if getattr(self, 'toast_job', None):
+                            self.root.after_cancel(self.toast_job)
+                        self.toast_job = self.root.after(8000, lambda label=self.achievement_toast:
+                                                        label.configure(text='') if label.winfo_exists() else None)
+                        continue
                     if kind == 'error':
-                        messagebox.showerror(self.t('error'), value)
+                        self.busy = self.process is not None and self.process.poll() is None
+                        if not self.quitting:
+                            messagebox.showerror(self.t('error'), value)
                     else:
+                        self.busy = False
                         message = self.t('ended' if value in (0, -15) else 'crashed', code=value)
                         self.append(message)
-                        if value not in (0, -15):
+                        if value not in (0, -15) and not self.quitting:
                             messagebox.showwarning(self.t('title'), message)
                     self.refresh_status()
                 else:
@@ -711,9 +909,26 @@ class Launcher:
         self.root.after(100, self.pump)
 
     def quit(self):
-        if self.process:
-            self.process.terminate()
-        self.root.destroy()
+        # Only this launcher's own child is ever stopped, and only by an explicit click.
+        if self.quitting:
+            return
+        if self.busy and not messagebox.askyesno(self.t('title'), self.t('quit_running')):
+            return
+        self.stopping.set()
+        self.quitting = True
+        with self.process_lock:
+            if self.process is not None and self.process.poll() is None:
+                self.process.terminate()
+        self.finish_quit()
+
+    def finish_quit(self):
+        # Give the output reader/local writer time to finish before exiting Python.
+        # This never waits on or terminates any pre-existing/other game process.
+        if self.game_thread is not None and self.game_thread.is_alive():
+            self.root.after(100, self.finish_quit)
+        else:
+            self.root.destroy()
+
 
 
 def main():

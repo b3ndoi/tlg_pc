@@ -21,12 +21,16 @@ for module in argparse base64 collections hashlib json re shutil struct tempfile
 done
 out/pyenv/bin/python -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
     --name "The Last Guardian" --distpath out/pyi-dist --workpath out/pyi-work --specpath out/pyi-work \
-    --paths "$PWD/scripts" --paths "$PWD/launcher" "${hidden[@]}" launcher/tlg_launcher.py
+    --paths "$PWD/scripts" --paths "$PWD/launcher" --add-data "$PWD/launcher/locales:locales" \
+    "${hidden[@]}" launcher/tlg_launcher.py
 
 dest=out/stage/$name
 rm -rf -- out/stage
 mkdir -p "$dest/out/gpu" "$dest/out/lib" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
+for language in en_US pt_BR; do
+    [[ -s "$dest/_internal/locales/$language.json" ]] || { echo "Missing launcher catalog: $language" >&2; exit 1; }
+done
 cp launcher/tlg.png "$dest/launcher/"
 strip --strip-debug -o "$dest/out/tlg-probe" out/tlg-probe
 strip --strip-debug -o "$dest/out/gpu/libtlggpu.so" out/gpu/libtlggpu.so

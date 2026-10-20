@@ -74,6 +74,21 @@ does not enable the complete developer-only profile by itself.
   changes is not established by its successful CI build.
 - Explicit review of the remaining [release gates](FIRST_RELEASE.md#release-gates).
 
+## Launcher follow-up checks
+
+Launcher/trophy follow-up: the local Windows suite passed 80 Python tests and
+13 native fixtures, including hidden-card privacy, bounded TRP/XML/PNG readers,
+save-copy auditing, persistent native flags, per-user/title isolation, native
+API queries, and Python/native state migration. The 30-FPS original-routine
+comparisons remain bit-identical. Synthetic package checks reject extracted
+trophy artwork, metadata and archives; Git exclusions are tested too. These
+offline tests start no game, map no
+launcher window and send no real desktop notification. A separate manually
+authorized older UI test run is not evidence that these newer changes have
+passed live acceptance. See [LAUNCHER.md](LAUNCHER.md) for the
+separate visual/live acceptance steps; the historical CI links above refer to
+the initial release-preparation commit, not this later UI change.
+
 ## Publishing useful performance results
 
 For each future result, record the commit/build, game revision, CPU/GPU/RAM,
