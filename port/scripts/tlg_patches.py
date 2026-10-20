@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The Last Guardian frame rate patches (TLG_FPS=30|60|unlocked), written to out/patches.bin.
 
-Each patch is a list of {image offset, expected bytes, new bytes} for eboot 1.03 only (sha256
-below, or a SELF dump of it): the expected bytes are checked in eboot.bin before anything is
+Each patch is a list of {image offset, expected bytes, new bytes} for a supported eboot build
+(hashes below, or a SELF dump of US 1.03): the expected bytes are checked before anything is
 written, so another build never gets byte writes in the wrong place. The loader (probe.c
 apply_patches) applies the file after relocation. Image offsets are eboot virtual addresses;
 the Ghidra addresses in the comments (base 0x1000000) are offset + 0x1000000. Research:
@@ -19,9 +19,12 @@ import struct
 import sys
 
 EBOOT_103_SHA256 = '91dce685be81f8f6bc88097d4fc7a62e97ca08d109621c57fe9371ae125feb3c'
+EBOOT_EU_100_SHA256 = 'ae82724c387a055462ab1089180a13c2a20ac02abb87c8249bf718bb5a71c7b1'
+EBOOT_EU_100_ELF_SHA256 = '580ba4bc7f9b785bfde0948be20ec67a30ca8c9318606ba5cbf28a1a01d54565'
 SELF_MAGIC = b'O\x15=\x1d'
 TEXT_FILE_OFFSET = 0x4000      # PT_LOAD 0 (R E): file offset of vaddr 0
 TEXT_SIZE = 0x16b2d5c
+EU_100_TEXT_SIZE = 0x168a5ec
 GHIDRA_BASE = 0x1000000
 
 
@@ -66,6 +69,22 @@ PATCHES = {
     ],
 }
 
+# CUSA03745, APP_VER 01.00, exact SELF/ELF hashes above. These are independently mapped
+# addresses, not a uniform shift of the US 1.03 entries. The sole flip-rate call at image
+# 0xb8be81 targets PLT 0x14b06d8, whose relocation resolves CBiu4mCE1DA (SetFlipRate).
+# SmoothDeltaTime at image 0xc51940 reads all three snap constants below.
+EU_100_PATCHES = {
+    'flip_rate_60': [
+        (0x1b8be7c, bytes.fromhex('be01000000'), bytes.fromhex('be00000000'),
+         'sceVideoOutSetFlipRate(h, 1) -> (h, 0)'),
+    ],
+    'dt_snap_60': [
+        (0x24d9920, f32(0.035), f32(0.0175), 'dt snap upper bound 0.035 -> 0.0175'),
+        (0x24d9924, f32(1 / 30), f32(1 / 60), 'dt snap target 1/30 -> 1/60'),
+        (0x24d9928, f32(0.0316666663), f32(0.0158333331), 'dt snap lower bound 0.031667 -> 0.015833'),
+    ],
+}
+
 MODES = {
     '30': [],
     # max_fps_double/max_fps_off are left out: 60 and unlocked were reached without them
@@ -84,13 +103,16 @@ def normalize_mode(value):
     return {'unlimited': 'unlocked', 'uncapped': 'unlocked', 'free': 'unlocked', '0': 'unlocked'}.get(value, value)
 
 
-def mode_writes(eboot, names):
+def mode_writes(eboot, names, patches=None, text_size=TEXT_SIZE):
     """[(image offset, new bytes, description)] after checking every expected byte in eboot."""
     writes = []
+    patches = PATCHES if patches is None else patches
     for name in names:
-        for address, expected, new, what in PATCHES[name]:
+        if name not in patches:
+            raise ValueError(f'{name}: unavailable for this executable build')
+        for address, expected, new, what in patches[name]:
             offset = address - GHIDRA_BASE
-            if not (0 <= offset and offset + len(expected) <= TEXT_SIZE) or len(expected) != len(new):
+            if not (0 <= offset and offset + len(expected) <= text_size) or len(expected) != len(new):
                 raise ValueError(f'{name}: bad patch entry at {address:#x}')
             found = eboot[TEXT_FILE_OFFSET + offset:TEXT_FILE_OFFSET + offset + len(expected)]
             if found != expected:
@@ -125,8 +147,9 @@ def prepare(game_dir, out_dir, mode):
             eboot = b''
             lines.append(f'Frame rate: cannot read eboot.bin ({error})')
         digest = hashlib.sha256(eboot).hexdigest()
-        usable = digest == EBOOT_103_SHA256
-        if not usable and eboot[:4] == SELF_MAGIC:
+        eu_build = digest in (EBOOT_EU_100_SHA256, EBOOT_EU_100_ELF_SHA256)
+        usable = digest == EBOOT_103_SHA256 or eu_build
+        if eboot[:4] == SELF_MAGIC:
             # A SELF dump of 1.03 (sha256 b7f61057…, #40) wraps the same ELF as the plain
             # dump the hash is for, at other file offsets: patch the ELF inside (the image
             # prepare.py hands the loader). mode_writes checks every expected byte, so a SELF
@@ -134,16 +157,22 @@ def prepare(game_dir, out_dir, mode):
             try:
                 from prepare import parse_self
                 eboot = bytes(parse_self(eboot)[0])
+                eu_build = eu_build or hashlib.sha256(eboot).hexdigest() == EBOOT_EU_100_ELF_SHA256
                 usable = True
                 lines.append(f'Frame rate: eboot.bin is a SELF ({digest[:16]}…), checking the ELF inside')
             except ValueError as error:
+                usable = False
                 lines.append(f'Frame rate: cannot read the SELF eboot.bin ({error})')
         if not usable:
-            lines.append(f'Frame rate: eboot.bin is not v1.03 ({digest[:16]}…): {mode} FPS patches not applied, 30 FPS')
+            lines.append(f'Frame rate: unsupported eboot.bin ({digest[:16]}…): {mode} FPS patches not applied, 30 FPS')
             mode = '30'
         else:
             try:
-                writes = mode_writes(eboot, names)
+                if eu_build:
+                    lines.append('Frame rate: profile CUSA03745 EU 01.00 (verified executable hash)')
+                    writes = mode_writes(eboot, names, EU_100_PATCHES, EU_100_TEXT_SIZE)
+                else:
+                    writes = mode_writes(eboot, names)
             except ValueError as error:
                 lines.append(f'Frame rate: {error}: patches not applied, 30 FPS')
                 mode, writes = '30', []

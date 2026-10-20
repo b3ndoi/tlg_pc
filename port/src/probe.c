@@ -19,6 +19,11 @@
 #ifdef _WIN32
 #include <windows.h>
 #include "fault_dispatch_win.h"
+#include "reload_null_guard.h"
+#include "input_timing_60.h"
+#include "script_timing_60.h"
+#include "clock_sync_60.h"
+#include "climb_diagnostics.h"
 #else
 #include <sys/mman.h>
 #include <malloc.h>
@@ -532,6 +537,179 @@ extern void tlg_cheat_status(unsigned id);
 extern uintptr_t tlg_damage_multiplier(int taken);
 extern uintptr_t tlg_orb_pickup_multiplier(unsigned kind);
 extern void tlg_stat_multipliers_status(int damage, int orb_pickup);
+
+#ifdef _WIN32
+static void install_tlg_clock_sync_60(const char *app0, Segment *segments,
+                                      uint64_t count, uint64_t size) {
+    const char *enabled=getenv("TLG_CLOCK_SYNC_60");
+    if (!enabled || strcmp(enabled,"1")) return;
+    char path[4096],serial[32]="",version[32]="";
+    snprintf(path,sizeof(path),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
+    sfo_value(path,"TITLE_ID",serial,sizeof(serial),NULL);
+    sfo_value(path,"APP_VER",version,sizeof(version),NULL);
+    if (TLG_CLOCK_SMOOTH>size ||
+        !mapped(segments,count,TLG_CLOCK_SMOOTH,TLG_CLOCK_SPAN) ||
+        !mapped(segments,count,TLG_CLOCK_PHYSICS,TLG_CLOCK_PHYSICS_SPAN) ||
+        !mapped(segments,count,TLG_CLOCK_PHYSICS_ZERO,TLG_CLOCK_ZERO_SPAN) ||
+        !mapped(segments,count,TLG_CLOCK_PHYSICS_CONSTANTS,20) ||
+        !mapped(segments,count,TLG_INPUT_FLIP,5) ||
+        !mapped(segments,count,TLG_INPUT_DT,12) ||
+        !mapped(segments,count,TLG_CLOCK_GRID,12) ||
+        !mapped(segments,count,TLG_CLOCK_CALL,5) ||
+        !mapped(segments,count,TLG_CLOCK_VTABLE_A,8) ||
+        !mapped(segments,count,TLG_CLOCK_VTABLE_B,8))
+        fail("60 FPS shared clock: required mapped ranges unavailable; no hook written");
+    uintptr_t table_a,table_b;
+    memcpy(&table_a,image+TLG_CLOCK_VTABLE_A,8);
+    memcpy(&table_b,image+TLG_CLOCK_VTABLE_B,8);
+    if (
+        !tlg_clock_60_matches(serial,version,image+TLG_CLOCK_SMOOTH,
+            image+TLG_CLOCK_PHYSICS,image+TLG_CLOCK_PHYSICS_ZERO,
+            image+TLG_CLOCK_PHYSICS_CONSTANTS,image+TLG_INPUT_FLIP,
+            image+TLG_INPUT_DT,image+TLG_CLOCK_GRID,image+TLG_CLOCK_CALL,
+            table_a,table_b,(uintptr_t)image))
+        fail("60 FPS shared clock: exact EU v6 profile/code/physics signatures required; no hook written");
+    unsigned char *relay=allocate(page_size),call[TLG_CLOCK_CALL_BYTES];
+    if (!tlg_input_rel_branch(call,(uintptr_t)(image+TLG_CLOCK_CALL),
+            (uintptr_t)relay,sizeof(call),1))
+        fail("60 FPS shared clock: relay outside relative-jump range; no hook written");
+    /* Leave the entire leaf routine untouched: its first instruction belongs
+     * to an existing red-zone protection group. Cover its sole direct caller
+     * and both exact vtable references instead; no stolen instructions.
+     */
+    uintptr_t wrapper=(uintptr_t)tlg_clock_60_smooth;
+    tlg_input_abs_jump(relay,wrapper);
+    protect(relay,page_size,5);
+    tlg_clock_60_configure((TlgClockSmooth)(image+TLG_CLOCK_SMOOTH));
+    memcpy(image+TLG_CLOCK_CALL,call,sizeof(call));
+    memcpy(image+TLG_CLOCK_VTABLE_A,&wrapper,8);
+    memcpy(image+TLG_CLOCK_VTABLE_B,&wrapper,8);
+    printf("60 FPS shared clock: exact EU 01.00 v7; animation/AI and physics share 360 Hz ticks with fractional carry; native filter, speed curves, pauses and 30 FPS unchanged\n");
+}
+
+static void install_tlg_script_timing_60(const char *app0, Segment *segments,
+                                        uint64_t count, uint64_t size) {
+    const char *enabled = getenv("TLG_TIMING_60");
+    if (!enabled || strcmp(enabled,"1")) return;
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path,sizeof(path),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
+    sfo_value(path,"TITLE_ID",serial,sizeof(serial),NULL);
+    sfo_value(path,"APP_VER",version,sizeof(version),NULL);
+    if (TLG_SCRIPT_LOAD > size ||
+        !mapped(segments,count,TLG_SCRIPT_LOAD,sizeof(tlg_script_load_code)) ||
+        !mapped(segments,count,TLG_SCRIPT_CALLER,sizeof(tlg_script_caller_code)) ||
+        !mapped(segments,count,TLG_INPUT_FLIP,sizeof(tlg_input_60_flip)) ||
+        !mapped(segments,count,TLG_INPUT_DT,sizeof(tlg_input_60_dt)) ||
+        !tlg_script_60_matches(serial,version,image+TLG_SCRIPT_LOAD,image+TLG_SCRIPT_CALLER,
+                              image+TLG_INPUT_FLIP,image+TLG_INPUT_DT)) {
+        printf("60 FPS script timing: inactive (requires exact EU 01.00 loader and 60 FPS patches)\n");
+        return;
+    }
+    unsigned char *relay = allocate(page_size);
+    unsigned char entry[8];
+    if (!tlg_input_rel_branch(entry,(uintptr_t)(image+TLG_SCRIPT_LOAD),(uintptr_t)(relay+32),8,0)) {
+        printf("60 FPS script timing: unavailable (relay range)\n");
+        return;
+    }
+    memcpy(relay,tlg_script_load_code,8);
+    tlg_input_abs_jump(relay+8,(uintptr_t)(image+TLG_SCRIPT_LOAD+8));
+    tlg_input_abs_jump(relay+32,(uintptr_t)tlg_script_60_load);
+    protect(relay,page_size,5);
+    tlg_script_60_configure((TlgScriptLoad)relay);
+    memcpy(image+TLG_SCRIPT_LOAD,entry,8);
+    printf("60 FPS script timing: experimental EU 01.00 loader ready; 8 exact-source patches, no archive writes\n");
+}
+
+static void install_tlg_input_timing_60(const char *app0, Segment *segments,
+                                       uint64_t count, uint64_t size) {
+    /* Experimental and opt-in. Actual 60 FPS patch bytes are also required;
+     * this cannot alter a 30 FPS game, even with the environment switch set.
+     */
+    const char *enabled = getenv("TLG_INPUT_TIMING_60");
+    const char *all_timing = getenv("TLG_TIMING_60");
+    if ((!enabled || strcmp(enabled, "1")) && (!all_timing || strcmp(all_timing, "1"))) return;
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (TLG_INPUT_UPDATE > size ||
+        !mapped(segments, count, TLG_INPUT_UPDATE, TLG_INPUT_SPAN) ||
+        !mapped(segments, count, TLG_INPUT_FLIP, sizeof(tlg_input_60_flip)) ||
+        !mapped(segments, count, TLG_INPUT_DT, sizeof(tlg_input_60_dt)) ||
+        !mapped(segments, count, TLG_INPUT_STICK_UPDATE, TLG_INPUT_STICK_SPAN) ||
+        !tlg_input_stick_matches(image + TLG_INPUT_STICK_UPDATE, TLG_INPUT_STICK_SPAN) ||
+        !tlg_input_60_matches(serial, version, image + TLG_INPUT_UPDATE,
+            size - TLG_INPUT_UPDATE, image + TLG_INPUT_FLIP, image + TLG_INPUT_DT)) {
+        printf("60 FPS input timing: inactive (requires exact EU 01.00 code and 60 FPS patches)\n");
+        return;
+    }
+    unsigned char *stubs = allocate(page_size);
+    unsigned char entry[TLG_INPUT_ENTRY_SIZE], copy[TLG_INPUT_COPY_SIZE];
+    if (!tlg_input_rel_branch(entry, (uintptr_t)(image + TLG_INPUT_UPDATE),
+            (uintptr_t)(stubs + TLG_INPUT_ENTRY_RELAY), sizeof(entry), 0) ||
+        !tlg_input_rel_branch(copy, (uintptr_t)(image + TLG_INPUT_COPY),
+            (uintptr_t)(stubs + TLG_INPUT_COPY_RELAY), sizeof(copy), 1)) {
+        printf("60 FPS input timing: unavailable (relay outside relative-jump range)\n");
+        return;
+    }
+    tlg_input_build_stubs(stubs, (uintptr_t)(image + TLG_INPUT_UPDATE + TLG_INPUT_ENTRY_SIZE),
+                         (uintptr_t)tlg_input_60_update, (uintptr_t)tlg_input_60_copy);
+    protect(stubs, page_size, 5);
+    tlg_input_60_configure((TlgInputUpdate)(stubs + TLG_INPUT_TRAMPOLINE));
+    memcpy(image + TLG_INPUT_UPDATE, entry, sizeof(entry));
+    memcpy(image + TLG_INPUT_COPY, copy, sizeof(copy));
+    printf("60 FPS input timing: experimental EU 01.00 button/stick hold snapshots normalized "
+           "to 30 Hz elapsed time (live counts, seconds timers and stamina unchanged)\n");
+    const char *climb_diag=getenv("TLG_CLIMB_DIAG");
+    if (climb_diag && !strcmp(climb_diag,"1")) {
+        int schema_mapped=1;
+        for (size_t i=0;i<sizeof(tlg_climb_fields)/sizeof(tlg_climb_fields[0]);++i)
+            if (!mapped(segments,count,tlg_climb_fields[i].registration,220)) schema_mapped=0;
+        if (schema_mapped && tlg_climb_schema_matches(image,size)) {
+            tlg_climb_diagnostics_enable();
+            printf("Climb diagnostics: exact EU 01.00 schema verified; latest published sensor values "
+                   "once/second; NO gameplay correction, controller input or new guest hook\n");
+        } else {
+            printf("Climb diagnostics: inactive (native property schema mismatch)\n");
+        }
+    }
+}
+
+static void install_tlg_reload_guard(const char *app0, Segment *segments, uint64_t count,
+                                     uint64_t size) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA03745")) return;
+    const uint64_t start = TLG_RELOAD_FUNCTION, at = TLG_RELOAD_SITE;
+    if (start > size || !mapped(segments, count, start, TLG_RELOAD_SPAN) ||
+        !tlg_reload_guard_matches(serial, version, image + start, size - start)) {
+        printf("Reload null guard: unavailable (EU version or code signature mismatch)\n");
+        return;
+    }
+    const char *enabled = getenv("TLG_RELOAD_NULL_GUARD");
+    if (enabled && !strcmp(enabled, "0")) {
+        printf("Reload null guard: explicitly disabled\n");
+        return;
+    }
+    unsigned char *stub = allocate(page_size);
+    const int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at + 5);
+    if (delta < INT32_MIN || delta > INT32_MAX) {
+        printf("Reload null guard: unavailable (stub outside relative-jump range)\n");
+        return;
+    }
+    tlg_reload_guard_build_stub(stub, (uintptr_t)(image + at + TLG_RELOAD_LENGTH),
+                                (uintptr_t)(image + TLG_RELOAD_ADVANCE));
+    protect(stub, page_size, 5);
+    const int32_t relative = (int32_t)delta;
+    image[at] = 0xe9;
+    memcpy(image + at + 1, &relative, sizeof(relative));
+    memset(image + at + 5, 0x90, TLG_RELOAD_LENGTH - 5);
+    printf("Reload null guard: CUSA03745 EU 01.00 ready (object lookup +0x21e4a5; "
+           "missing entry -> existing loop advance +0x21e8dd)\n");
+}
+#endif
 
 static void install_cheats(const char *app0, Segment *segments, uint64_t count, uint64_t size) {
     char path[4096], serial[32] = "", version[32] = "";
@@ -1111,6 +1289,12 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
+#ifdef _WIN32
+    if (gpu_enabled) install_tlg_reload_guard(app0, segments, ns, size);
+    if (gpu_enabled) install_tlg_input_timing_60(app0, segments, ns, size);
+    if (gpu_enabled) install_tlg_script_timing_60(app0, segments, ns, size);
+    if (gpu_enabled) install_tlg_clock_sync_60(app0, segments, ns, size);
+#endif
     if (gpu_enabled) install_orb_multiplier(app0, segments, ns, size);
     if (gpu_enabled) install_cheats(app0, segments, ns, size);
     if (gpu_enabled) install_actor_watch(app0, segments, ns, size);
