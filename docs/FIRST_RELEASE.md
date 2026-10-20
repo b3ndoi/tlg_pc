@@ -4,7 +4,8 @@ Prepared, not published. Based on HayatoG/tlg_pc PR #69 commit `63ba4f5`;
 existing authorship, history, GPL and third-party notices are retained.
 Upstream main through `b8d5f41` is integrated in a separate merge commit,
 preserving its Mods/Cheats support with nothing enabled by default. Track
-later changes through `upstream`. The startup redesign remains deferred.
+later changes through `upstream`. The subsequent tabbed launcher/local trophy
+observer is documented separately in [LAUNCHER.md](LAUNCHER.md).
 
 ## Commit groups
 
@@ -20,7 +21,7 @@ the existing tracked patches, not a new private submodule commit.
 
 ## Boundaries
 
-- Normal launcher UI/defaults stay unchanged, including 30 FPS. The 30-FPS patch
+- Normal gameplay defaults stay unchanged, including 30 FPS. The 30-FPS patch
   mode writes no FPS patches. Timing hooks require explicit switches, exact EU
   signatures and actual 60-FPS patch bytes.
 - Additional input/script/shared-clock hooks are Windows-only and target
@@ -88,4 +89,6 @@ optional tests obtain original functions from the owner's ELF at runtime.
 Pushes do not publish releases. Manual dispatch can create a draft only.
 Build checks and targeted private gameplay observations are recorded separately
 in [TESTING.md](TESTING.md); they do not complete the candidate smoke-test gate.
-Next: message catalogs, startup UI, then persistent local achievements.
+The launcher now has translation catalogs and a first local trophy-observation
+pass. Visual/live acceptance remains separate; custom achievements and full
+experimental-profile UI integration are not implemented.

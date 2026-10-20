@@ -29,7 +29,8 @@ def main():
     elf = args.elf.resolve() if args.elf else None
     if elf and not elf.is_file():
         parser.error('--elf must be an existing local file')
-    for name in ('test_tlg_patches.py', 'test_release_defaults.py'):
+    for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
+                 'test_launcher_localization.py', 'test_launcher_ui.py'):
         run([sys.executable, PORT/'tests'/name])
     if sys.platform != 'win32':
         print('SKIP: Windows native fixtures require Windows/MSYS2 CLANG64')

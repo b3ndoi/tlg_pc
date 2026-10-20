@@ -74,6 +74,15 @@ does not enable the complete developer-only profile by itself.
   changes is not established by its successful CI build.
 - Explicit review of the remaining [release gates](FIRST_RELEASE.md#release-gates).
 
+## Launcher follow-up checks
+
+Launcher follow-up: the local Windows suite passed 57 Python tests and the same
+11 native fixtures after adding persistence, notification mocks, translation
+catalogs and withdrawn widget checks. No real desktop notification, visible
+launcher window or game was started. See [LAUNCHER.md](LAUNCHER.md) for the
+separate visual/live acceptance steps; the historical CI links above refer to
+the initial release-preparation commit, not this later UI change.
+
 ## Publishing useful performance results
 
 For each future result, record the commit/build, game revision, CPU/GPU/RAM,

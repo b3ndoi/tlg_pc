@@ -20,6 +20,9 @@ import subprocess
 import sys
 
 import shader_cache
+import achievements
+import desktop_notifications
+import localization
 
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
 FROZEN = bool(getattr(sys, 'frozen', False))
@@ -86,6 +89,8 @@ DEFAULT_SETTINGS = {
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
+    'track_achievements': True,    # observes existing trophy events only; never patches game logic
+    'achievement_notifications': False,  # optional Windows Shell notifications, off by default
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
@@ -507,6 +512,62 @@ def launch(settings, seconds=0, extra_env=None):
     return process, log
 
 
+def copy_output(process, log, settings, on_line, on_unlock=None, notes=()):
+    """Drain only this newly launched child's pipe; local tracking cannot stop logging.
+
+No past/current-session log scanning. Disk persistence and optional notifications
+run on a bounded background observer, never on the stdout-draining path.
+"""
+    selected = localization.language(settings)
+    observer = achievements.Session(USER_DIR, settings.get('game_dir'),
+                                    enabled=settings.get('track_achievements', True),
+                                    on_unlock=on_unlock,
+                                    on_error=lambda error: on_line('Achievements: ' + error + '\n'),
+                                    notifier_factory=desktop_notifications.factory(
+                                        settings.get('achievement_notifications', False),
+                                        localization.text('achievement_unlocked', selected),
+                                        localization.text('achievement_body', selected, id='{id}')))
+    output = None
+    try:
+        try:
+            output = open(log, 'w', encoding='utf-8')
+        except OSError as error:
+            on_line('Log file unavailable; continuing to drain game output: ' + str(error) + '\n')
+
+        def write_line(line):
+            nonlocal output
+            if output:
+                try:
+                    output.write(line)
+                    output.flush()
+                except OSError as error:
+                    try:
+                        output.close()
+                    except OSError:
+                        pass
+                    output = None
+                    on_line('Log write failed; game output continues: ' + str(error) + '\n')
+        for note in notes:
+            # Preparation text is not a trophy source.
+            on_line(note + '\n')
+            write_line(note + '\n')
+        for line in process.stdout:
+            write_line(line)
+            try:
+                observer.feed(line)
+            except Exception as error:
+                observer.warning(error)
+            on_line(line)
+    finally:
+        observer.close()
+        if output:
+            try:
+                output.close()
+            except OSError as error:
+                on_line('Log close failed: ' + str(error) + '\n')
+    return process.wait()
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     attach_stdio()
@@ -531,15 +592,7 @@ def main(argv=None):
     prepare(settings, log=lambda line: notes.append(line) if line.startswith('Frame rate') else None)
     process, log = launch(settings, seconds)
     print(f'Rodando (log: {log})', flush=True)
-    with open(log, 'w', encoding='utf-8') as out:
-        for line in notes:
-            print(line, flush=True)
-            out.write(line + '\n')
-        for line in process.stdout:
-            sys.stdout.write(line)
-            out.write(line)
-            out.flush()
-    return process.wait()
+    return copy_output(process, log, settings, sys.stdout.write, notes=notes)
 
 
 if __name__ == '__main__':

@@ -47,11 +47,13 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends gcc-14 g++-14 cmake ninja-build pkg-config nasm \
-            curl git python3-venv python3-tk libvulkan-dev glslang-tools libboost-dev \
+            curl git python3-venv python3-tk xvfb xauth libvulkan-dev glslang-tools libboost-dev \
             libxxhash-dev zlib1g-dev libx11-dev libxcb1-dev libxext-dev libxrandr-dev libxcursor-dev \
             libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
             libdecor-0-dev libegl-dev libgl-dev libdrm-dev libgbm-dev libpulse-dev libasound2-dev \
             libpipewire-0.3-dev libudev-dev libdbus-1-dev libusb-1.0-0-dev
+      - name: CPU-only release regressions (no game assets)
+        run: xvfb-run -a python3 tests/run_release_regressions.py
       - name: Cache built libraries
         id: deps
         uses: actions/cache@v4
@@ -67,6 +69,9 @@ jobs:
         run: TLG_LTO=OFF TLG_PGO=off bash build.sh
       - name: Package
         run: bash packaging/linux/package.sh
+      - name: Frozen launcher smoke test (no game or notifications)
+        timeout-minutes: 2
+        run: '"out/stage/tlg-linux-x86_64/The Last Guardian" --script "$PWD/tests/frozen_launcher_smoke.py"'
       - uses: actions/upload-artifact@v4
         with:
           name: tlg-linux-x86_64
@@ -103,7 +108,9 @@ jobs:
             mingw-w64-clang-x86_64-zydis mingw-w64-clang-x86_64-spirv-tools
             mingw-w64-clang-x86_64-spirv-headers mingw-w64-clang-x86_64-spirv-cross
       - name: CPU-only release regressions (no game assets)
-        run: python tests/run_release_regressions.py
+        env:
+          WINPYTHON_WIN: ${{ steps.python.outputs.python-path }}
+        run: '"$(cygpath -u "$WINPYTHON_WIN")" tests/run_release_regressions.py'
       - name: Build
         env:
           MSYS2_ROOT: ${{ runner.temp }}/msys64
@@ -118,6 +125,9 @@ jobs:
           export MSYS2_ROOT=$(cygpath -u "$MSYS2_ROOT")
           export WINPYTHON=$(cygpath -u "$WINPYTHON_WIN")
           bash packaging/windows/package.sh
+      - name: Frozen launcher smoke test (no game or notifications)
+        timeout-minutes: 2
+        run: '"out/stage/tlg-windows-x86_64/The Last Guardian.exe" --script "$(cygpath -w "$PWD/tests/frozen_launcher_smoke.py")"'
       - uses: actions/upload-artifact@v4
         with:
           name: tlg-windows-x86_64

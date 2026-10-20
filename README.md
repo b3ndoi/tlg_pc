@@ -161,18 +161,36 @@ The [runtime overview](port/README.md), [timing notes](docs/60fps.md) and
 technical documentation is in Portuguese and records earlier experiments;
 use the current release checklist for this fork's supported boundaries.
 
+## Launcher and local achievements
+
+The tabbed launcher separates Play/setup, Video, Controls, Achievements, Session
+log and About. It displays the selected game's title ID/revision rather than a
+fixed US revision label, and keeps the baseline/experimental FPS distinction
+visible. English and Portuguese interface text lives in data-only translation
+catalogs, with English fallback for additional languages.
+
+New trophy-unlock events from games started through this launcher or its
+headless `--play` path can be recorded under
+`user/achievements/<TITLE_ID>.json`. Repeated events are deduplicated. The page
+uses trophy IDs; original names/icons, old save/PSN progress and custom
+challenges are **not** imported or inferred. This is local tracking, not PSN
+synchronization or a change to the game's trophy API.
+
+Optional Windows notifications are off by default. Unlocks still persist if
+Windows suppresses a notification. No existing game/log is attached to or
+backfilled. See the [launcher and achievement guide](docs/LAUNCHER.md).
+
 ## Next steps
 
 1. Publish clear, reproducible test results and prepare an inspected release
    candidate.
-2. Extract interface strings into translation catalogs and improve the startup
-   UI, game-file validation and profile explanations.
-3. Design persistent local achievements and optional notifications. Custom
-   achievements may be considered later; neither custom achievements nor a
-   persistent trophy tracker is implemented in this description update.
+2. Expand translations and test the redesigned launcher on more desktop/DPI
+   configurations; integrate the complete experimental profile separately.
+3. Consider richer local trophy metadata and custom achievements later. No
+   custom challenge rules have been added.
 
-These are planned tasks, not advertised features. No UI, runtime, patch,
-default frame rate or achievement behavior changes in this documentation PR.
+These remaining tasks are not advertised as completed features. The default
+frame rate and native gameplay/timing code remain unchanged by the launcher work.
 
 ## Credits and license
 
