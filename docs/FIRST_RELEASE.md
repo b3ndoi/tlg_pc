@@ -77,7 +77,8 @@ optional tests obtain original functions from the owner's ELF at runtime.
       909 clock guard mutations rejected, 291600 shared-clock updates, 213180
       native smoother updates, two 30000-update bit-identical 30-FPS comparisons.
 - [x] Fork created under b3ndoi and the five curated commits pushed for review.
-- [ ] Clean Windows/Linux builds pass in GitHub Actions.
+- [x] Clean Windows/Linux compilation, packaging and artifact uploads pass in
+      [post-merge CI for main `8184a2c`](https://github.com/b3ndoi/tlg_pc/actions/runs/39421826391).
 - [ ] Packages/source inspected: no game/firmware, dumps, saves, caches, private
       paths, session logs or research data; matching source/licenses included.
 - [ ] User-authorized candidate smoke tests at 1080p30/native1440p60.
@@ -85,4 +86,6 @@ optional tests obtain original functions from the owner's ELF at runtime.
 - [ ] Manually create and inspect a draft release; separately approve publication.
 
 Pushes do not publish releases. Manual dispatch can create a draft only.
+Build checks and targeted private gameplay observations are recorded separately
+in [TESTING.md](TESTING.md); they do not complete the candidate smoke-test gate.
 Next: message catalogs, startup UI, then persistent local achievements.
