@@ -12,6 +12,7 @@
 #include "tlg_overlay.h"
 #include "tlg_graphics.h"
 #include "tlg_settings.h"
+#include "tlg_frame_context.h"
 #include "../tlggpu.h"
 
 namespace {
@@ -114,6 +115,8 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     height = h;
     LOG_INFO(Frontend, "Window {}x{} on {}", w, h, driver);
     focused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+    minimized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
+    TlgFrameContext::Window(minimized, focused);
     if (const char* test = std::getenv("TLG_MOUSE_TEST"); test && test[0] == '1') {
         mouse_test_start = SDL_GetTicksNS();
         std::printf("Mouse: TLG_MOUSE_TEST synthesizes motion, clicks and wheel notches\n");
@@ -364,6 +367,11 @@ bool WindowSDL::PollEvents() {
             break;
         }
     }
+    // A minimized Windows SDL window can retain its last nonzero pixel size.
+    // Do not infer visibility solely from dimensions in the presenter.
+    const auto flags = SDL_GetWindowFlags(window);
+    minimized = (flags & SDL_WINDOW_MINIMIZED) != 0;
+    TlgFrameContext::Window(minimized, (flags & SDL_WINDOW_INPUT_FOCUS) != 0);
     UpdateMouseCapture();
     return is_open;
 }

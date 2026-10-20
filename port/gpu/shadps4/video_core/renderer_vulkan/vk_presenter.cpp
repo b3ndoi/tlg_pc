@@ -15,6 +15,7 @@
 #include "tlg_overlay.h"
 #include "tlg_settings.h"
 #include "tlg_graphics.h"
+#include "tlg_frame_context.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
@@ -400,6 +401,16 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         auto desc = VideoCore::TextureCache::ImageDesc{attribute, cpu_address};
         image_id = texture_cache.FindImage(desc);
         texture_cache.UpdateImage(image_id);
+        if (rasterizer->GetUpscaler().EngineNativeOutput()) {
+            const auto& actual = texture_cache.GetImage(image_id).info.size;
+            static u32 reported_width = 0, reported_height = 0;
+            if (actual.width != reported_width || actual.height != reported_height) {
+                std::printf("Engine native display: registered guest buffer %ux%u; no host replacement\n",
+                            actual.width, actual.height);
+                reported_width = actual.width;
+                reported_height = actual.height;
+            }
+        }
     }
 
     Frame* frame = GetRenderFrame();
@@ -449,16 +460,7 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         }));
         draw_scheduler.DeferOperation([device, image_view] { device.destroyImageView(image_view); });
         image_size = vk::Extent2D{display.width, display.height};
-        const vk::ImageMemoryBarrier2 to_read{
-            .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-            .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
-            .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-            .image = display.image,
-            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        };
+        const auto to_read = DisplaySurfaceState::Read(display.image);
         cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_read});
     } else {
         auto& image = texture_cache.GetImage(image_id);
@@ -579,6 +581,13 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         ++frame_dump_index;
     }
 
+    if (upscaled) {
+        // The next guest draw may LOAD/blend over this same host image. Restore
+        // its retained layout instead of hiding it behind an UNDEFINED discard.
+        const auto after_read = DisplaySurfaceState::AfterRead(display.image);
+        cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &after_read});
+    }
+
     // Flush frame creation commands.
     frame->ready_semaphore = draw_scheduler.GetWorkSemaphore()->Handle();
     frame->ready_tick = draw_scheduler.CurrentTick();
@@ -681,7 +690,7 @@ Frame* Presenter::PrepareBlankFrame(bool present_thread) {
 }
 
 void Presenter::PresentLoadingFrame() {
-    if (window.GetWidth() == 0 || window.GetHeight() == 0) {
+    if (!TlgFrameContext::CanPresent(window.IsMinimized(), window.GetWidth(), window.GetHeight())) {
         return;
     }
     swapchain.UpdateVsync();
@@ -747,9 +756,10 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         }
     };
 
-    // tlg: a minimized window has no pixels on Windows (0x0); keep the swapchain and skip
-    // presenting until the window is restored.
-    if (window.GetWidth() == 0 || window.GetHeight() == 0) {
+    // SDL can retain nonzero pixel dimensions while Windows has minimized it.
+    // Keep the swapchain/frame fences intact and skip only surface presentation.
+    if (!TlgFrameContext::CanPresent(window.IsMinimized(), window.GetWidth(), window.GetHeight())) {
+        if (is_game_frame) TlgFrameContext::skipped.fetch_add(1, std::memory_order_relaxed);
         free_frame();
         return;
     }
@@ -898,7 +908,9 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     // Present to swapchain.
     {
         std::scoped_lock submit_lock{Scheduler::submit_mutex};
-        if (!swapchain.Present() && window.GetWidth() != 0 && window.GetHeight() != 0) {
+        const bool surface_presented = swapchain.Present();
+        if (surface_presented && is_game_frame) TlgFrameContext::presented.fetch_add(1, std::memory_order_relaxed);
+        if (!surface_presented && window.GetWidth() != 0 && window.GetHeight() != 0) {
             swapchain.Recreate(window.GetWidth(), window.GetHeight());
         }
     }

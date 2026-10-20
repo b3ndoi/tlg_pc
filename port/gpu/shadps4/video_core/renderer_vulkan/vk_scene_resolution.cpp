@@ -108,7 +108,7 @@ bool SceneTargets::SetSize(SceneResolution::Size next) {
     ++generation;
     recent = {};
     size = next;
-    std::printf("Scene resolution: raster %ux%u, half-resolution targets %ux%u, UI 1920x1080 "
+    std::printf("Scene resolution: raster %ux%u, half-resolution targets %ux%u, guest coordinates 1920x1080 "
                 "(live)\n", size.width, size.height, size.width / 2, size.height / 2);
     return true;
 }

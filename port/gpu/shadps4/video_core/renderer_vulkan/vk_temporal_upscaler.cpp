@@ -25,6 +25,7 @@
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/renderer_vulkan/vk_camera_motion.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
+#include "video_core/renderer_vulkan/native_output.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -191,6 +192,12 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     // Explicit resolution overrides retain the old compatibility path. Normal presets
     // keep guest allocations/UI native and change only host raster targets at frame boundaries.
     scaled_session = std::getenv("TLG_RENDER_RES") && std::getenv("TLG_RENDER_RES")[0];
+    const char* native_output = std::getenv("TLG_NATIVE_OUTPUT");
+    native_output_requested = native_output && std::strcmp(native_output, "1") == 0;
+    const char* engine_resolution = std::getenv("TLG_ENGINE_NATIVE_RESOLUTION");
+    engine_native_output = Vulkan::NativeOutput::EngineNative(
+        engine_resolution ? engine_resolution : "", scaled_session, native_output_requested,
+        env && std::strcmp(env, "none") == 0);
     render_width = 1920;
     render_height = 1080;
     if (const char* res = std::getenv("TLG_RENDER_RES")) {
@@ -199,6 +206,10 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
             render_width = w;
             render_height = h;
         }
+    }
+    if (engine_native_output) {
+        target_width = render_width = 2560;
+        target_height = render_height = 1440;
     }
     // Scene depth copied into the output-size UI depth by a blit (depth aspect).
     const auto features = instance.GetPhysicalDevice()
@@ -262,10 +273,30 @@ bool TemporalUpscaler::ReducedScene(const VideoCore::Image& color) const {
 }
 
 bool TemporalUpscaler::RasterScaling() const {
-    return !scaled_session && scene_targets.Reduced() && !done_this_frame;
+    return !engine_native_output && !scaled_session && scene_targets.Reduced() && !done_this_frame;
+}
+
+bool TemporalUpscaler::NativeOutput() const {
+    return Vulkan::NativeOutput::Enabled(native_output_requested, scaled_session,
+        TlgSettings::Get().upscaler != TlgSettings::UpscalerOff, target_width, target_height);
 }
 
 bool TemporalUpscaler::OnFrameStart() {
+    if (engine_native_output) {
+        // Engine allocations, dispatch sizes, stencil/material buffers and all
+        // screen constants now agree. Never split them across 1080p/1440p host
+        // proxies or apply the inherited UI/FSR composition to this session.
+        scene_targets.SetSize({});
+        TlgSettings::Get().active_render_width = 2560;
+        TlgSettings::Get().active_render_height = 1440;
+        static bool announced = false;
+        if (!announced) {
+            std::printf("Engine native rendering: 2560x1440; host scene proxies, display replacement, "
+                        "temporal upscaling and coordinate rescaling disabled\n");
+            announced = true;
+        }
+        return false;
+    }
     // tlg: TLG_PRESET_FILE=<file> holding a preset number, read about once a second: switches
     // the preset like the menu does (scripted tests of live preset changes).
     static const char* preset_file = std::getenv("TLG_PRESET_FILE");
@@ -302,6 +333,10 @@ bool TemporalUpscaler::OnFrameStart() {
         target_width = TlgSettings::OutputWidths[output];
         target_height = TlgSettings::OutputHeights[output];
         std::printf("Output resolution: %ux%u (live)\n", target_width, target_height);
+        if (NativeOutput()) {
+            std::printf("Native output: 2560x1440 scene/menu/HUD raster and host display; "
+                        "no temporal upscaling, no UI shader whitelist\n");
+        }
         failed = false;
         fsr4_failed = false;
     }
@@ -1285,7 +1320,7 @@ float TemporalUpscaler::SceneMipBias() const {
 }
 
 bool TemporalUpscaler::Scaled() const {
-    return scaled_session || target_width != 1920 || target_height != 1080;
+    return !engine_native_output && (scaled_session || target_width != 1920 || target_height != 1080);
 }
 
 void TemporalUpscaler::OnColorTarget(VideoCore::ImageId color) {
@@ -1303,6 +1338,9 @@ void TemporalUpscaler::OnColorTarget(VideoCore::ImageId color) {
 
 void TemporalUpscaler::OnDraw(u64 vs_hash, VideoCore::ImageId color,
                               VideoCore::ImageId depth, bool native_viewport) {
+    // This mode keeps menu/HUD draws in the same native-resolution proxy chain
+    // as the scene. It must not run the older shader-ID-based UI background copy.
+    if (engine_native_output || NativeOutput()) return;
     if (!Scaled() && vs_hash == ui_trigger_vs) done_this_frame = true;
     if (!Scaled() || !color) {
         return;
@@ -1804,52 +1842,59 @@ bool TemporalUpscaler::RedirectColor(VideoCore::ImageId color,
     }
     std::scoped_lock lock{display_mutex};
     auto& display = displays[address];
-    if (!display_redirect) {
+    const bool native_output = NativeOutput();
+    if (!display_redirect && !native_output) {
         display.valid = false; // not upscaled: the presenter shows the guest buffer
         return false;
     }
+    const auto [display_width, display_height] = Vulkan::NativeOutput::DisplaySize(
+        native_output, target_width, target_height, ui_width, ui_height);
     if (!display.image || display.format != image.info.pixel_format ||
-        display.width != ui_width || display.height != ui_height) {
+        display.width != display_width || display.height != display_height) {
         const auto device = instance.GetDevice();
         scheduler.Finish();
         display.views.clear();
-        std::printf("Display: host buffer %ux%u (live)\n", ui_width, ui_height);
+        std::printf("Display: host buffer %ux%u (live)%s\n", display_width, display_height,
+                    native_output ? "; native raster output" : "");
         display.format = image.info.pixel_format;
-        display.width = ui_width;
-        display.height = ui_height;
+        display.width = display_width;
+        display.height = display_height;
         display.image = VideoCore::UniqueImage(device, instance.GetAllocator());
+        display.surface.Reset();
         display.image.Create(vk::ImageCreateInfo{
             .flags = vk::ImageCreateFlagBits::eMutableFormat,
             .imageType = vk::ImageType::e2D,
             .format = display.format,
-            .extent = {ui_width, ui_height, 1},
+            .extent = {display_width, display_height, 1},
             .mipLevels = 1,
             .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1,
             .tiling = vk::ImageTiling::eOptimal,
             .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled |
-                     vk::ImageUsageFlagBits::eTransferSrc,
+                     vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
             .initialLayout = vk::ImageLayout::eUndefined,
         });
         display.views.clear();
     }
     scheduler.EndRendering();
-    const vk::ImageMemoryBarrier2 b{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
-        .srcAccessMask = vk::AccessFlagBits2::eNone,
-        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-        .oldLayout = vk::ImageLayout::eUndefined,
-        .newLayout = vk::ImageLayout::eGeneral,
-        .image = vk::Image(display.image),
-        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-    };
+    const bool initialize = !display.surface.Initialized();
+    if (initialize) {
+        const auto initial = display.surface.Initialize(vk::Image(display.image));
+        const auto host_image = vk::Image(display.image);
+        scheduler.Record([initial, host_image](vk::CommandBuffer cmd) {
+            cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &initial});
+            const vk::ClearColorValue black{std::array{0.f, 0.f, 0.f, 1.f}};
+            cmd.clearColorImage(host_image, vk::ImageLayout::eTransferDstOptimal, black,
+                                vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1});
+        });
+    }
+    const auto b = DisplaySurfaceState::Write(vk::Image(display.image), initialize);
     scheduler.Record([b](vk::CommandBuffer cmd) {
         cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
     });
     display.valid = true;
     target = {Mirror(vk::Image(display.image), display.views, view_info.format, {}),
-              vk::ImageLayout::eGeneral, ui_width, ui_height};
+              vk::ImageLayout::eGeneral, display_width, display_height};
     return true;
 }
 
