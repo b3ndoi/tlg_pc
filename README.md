@@ -106,6 +106,8 @@ A lista completa, que também vai nas notas de cada Release, está em [`docs/ARQ
 
 O passo a passo completo, com os problemas mais comuns, está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
 
+**Mods e cheats.** O botão **Mods / Cheats…** do launcher abre a pasta `user/mods/` e lista os arquivos de cheat em XML (formato shadPS4/GoldHEN) que você soltar lá; nenhum tem efeito até você ligar na lista (ou `isEnabled="true"` no próprio arquivo). Um cheat escrito para outra versão do jogo é ignorado sozinho, sem travar os demais.
+
 **Processadores sem MOVBE, BMI1 ou LZCNT** (Intel anteriores ao Haswell): o código do jogo usa essas instruções (1941 pontos no eboot 1.03 com a libc e o Fios2; nenhuma SSE4A). Nesses processadores o port troca essas instruções por uma emulação na partida (precisa do `iced-x86`, que já vem nos pacotes). `TLG_ISA_REWRITE=1` força a emulação de todos os conjuntos (teste), uma lista como `TLG_ISA_REWRITE=movbe,bmi1` força só esses e `TLG_ISA_REWRITE=0` desliga. O log mostra `ISA: CPU lacks ...` ou `ISA: forced rewrite of N sites`.
 
 **Windows: proteção da red zone.** O código do PS4 guarda variáveis nos 128 bytes abaixo do `rsp` (a "red zone"), e o Windows escreve ali a cada exceção (o port usa exceções para acompanhar a memória da GPU), o que no inFAMOUS derrubava o jogo em pontos aleatórios. Na partida o port reescreve as instruções de memória das funções que usam a red zone para rodarem com o `rsp` 128 bytes mais baixo (vem do inFAMOUS, iss_pc #29/#41). Vem ligada no Windows; `TLG_RED_ZONE_REWRITE=0` desliga e `TLG_RED_ZONE_REWRITE=1` liga no Linux (teste). Teste no Linux: `TLG_CLOBBER_RED_ZONE=<bytes>` apaga essa quantidade de bytes abaixo do `rsp` a cada exceção, como o Windows (`1` = 128). Detalhes: [port/docs/red_zone.md](port/docs/red_zone.md).
@@ -225,6 +227,8 @@ The full list, which also goes in the notes of every Release, is in [`docs/ARQUI
 4. Controller (PS4/PS5, Xbox) or keyboard and mouse: the mouse turns the camera, **Esc** releases the mouse and a click takes it back. The layout and remapping are in [`README-player.md`](port/packaging/README-player.md) and in the launcher's **Controls** box.
 
 The full guide, with common problems, is in [`README-player.md`](port/packaging/README-player.md), which also ships inside the package.
+
+**Mods and cheats.** The launcher's **Mods / Cheats…** button opens the `user/mods/` folder and lists any cheat XML files (shadPS4/GoldHEN format) you drop there; nothing has any effect until you turn it on in the list (or the file's own `isEnabled="true"`). A cheat written for another game version is skipped on its own, without affecting the others.
 
 **CPUs without MOVBE, BMI1 or LZCNT** (Intel before Haswell): the game's code uses those instructions (1941 sites in the 1.03 eboot with its libc and Fios2; no SSE4A). On those CPUs the port replaces them with an emulation at start (needs `iced-x86`, included in the packages). `TLG_ISA_REWRITE=1` forces the emulation of every set (testing), a list such as `TLG_ISA_REWRITE=movbe,bmi1` forces only those and `TLG_ISA_REWRITE=0` turns it off. The log shows `ISA: CPU lacks ...` or `ISA: forced rewrite of N sites`.
 

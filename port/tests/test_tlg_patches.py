@@ -123,5 +123,23 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertEqual((applied, struct.unpack_from('<8sQQ', blob)), ('30', (b'G3PATCH2', 0, 0)))
 
 
+class ModTitleIdTests(unittest.TestCase):
+    EU_XML = """<?xml version="1.0"?>
+<Patch>
+  <TitleID><ID>CUSA03745</ID></TitleID>
+  <Metadata Title="The Last Guardian" Name="Test" Author="x" PatchVer="1.0" AppVer="01.03" AppElf="eboot.bin" isEnabled="true">
+    <PatchList><Line Type="bytes" Address="0x00401000" Value="90"/></PatchList>
+  </Metadata>
+</Patch>"""
+
+    def test_eu_title_id_is_accepted(self):
+        # The EU disc is CUSA03745 (tlg_run.py LANGUAGES_BY_TITLE); a cheat file scoped to it
+        # must not be silently filtered out by TITLE_IDS.
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, 'eu.xml').write_text(self.EU_XML)
+            found = t.mod_patches.external_patches(tmp, '01.03', t.TITLE_IDS)
+            self.assertEqual([key for key, _, _ in found], ['eu.xml/Test'])
+
+
 if __name__ == '__main__':
     unittest.main()

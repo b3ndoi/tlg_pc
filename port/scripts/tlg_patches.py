@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The Last Guardian frame rate patches (TLG_FPS=30|60|unlocked), written to out/patches.bin.
+"""The Last Guardian frame rate patches (TLG_FPS=30|60|unlocked) and community mods/cheats,
+written together to out/patches.bin.
 
-Each patch is a list of {image offset, expected bytes, new bytes} for a supported eboot build
+Each built-in frame rate patch is a list of {image offset, expected bytes, new bytes} for a supported eboot build
 (hashes below, or a SELF dump of US 1.03): the expected bytes are checked before anything is
 written, so another build never gets byte writes in the wrong place. The loader (probe.c
 apply_patches) applies the file after relocation. Image offsets are eboot virtual addresses;
 the Ghidra addresses in the comments (base 0x1000000) are offset + 0x1000000. Research:
 docs/60fps.md.
 
-30 (default) writes an empty patch file: the game runs exactly as on PS4.
+30 with no mods enabled writes an empty patch file: the game runs exactly as on PS4.
+
+Mods/cheats (--mods-dir/--mods-config, mod_patches.py): shadPS4/GoldHEN cheat XML files the
+player drops in the mods folder. Nothing in there has any effect until it is enabled (the
+file's own isEnabled="true", or mods.json), same contract as the built-in patches above.
 """
 import argparse
 import hashlib
@@ -18,6 +23,10 @@ from pathlib import Path
 import struct
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mod_patches
+
+TITLE_IDS = {'CUSA03627', 'CUSA03745'}   # US, EU (tlg_run.py LANGUAGES_BY_TITLE)
 EBOOT_103_SHA256 = '91dce685be81f8f6bc88097d4fc7a62e97ca08d109621c57fe9371ae125feb3c'
 EBOOT_EU_100_SHA256 = 'ae82724c387a055462ab1089180a13c2a20ac02abb87c8249bf718bb5a71c7b1'
 EBOOT_EU_100_ELF_SHA256 = '580ba4bc7f9b785bfde0948be20ec67a30ca8c9318606ba5cbf28a1a01d54565'
@@ -122,22 +131,59 @@ def mode_writes(eboot, names, patches=None, text_size=TEXT_SIZE):
 
 
 def write_patch_file(path, writes):
-    """G3PATCH2 (probe.c apply_patches): base 0 (no pointer slots), then (offset, length, bytes)."""
+    """G3PATCH2 (probe.c apply_patches): base 0 (no pointer slots), then (offset, length, bytes).
+    Base 0 only matters for a write that lands exactly on a relocated pointer slot (none of the
+    built-in frame rate patches or typical shadPS4/GoldHEN literal-value mods do); it does not
+    change plain byte/float writes either way."""
     blob = struct.pack('<8sQQ', b'G3PATCH2', 0, len(writes))
     for offset, data, _ in writes:
         blob += struct.pack('<QQ', offset, len(data)) + data
     Path(path).write_bytes(blob)
 
 
-def prepare(game_dir, out_dir, mode):
-    """Writes out/patches.bin for the mode; returns (applied mode, log lines).
-    Any problem (other eboot build, unexpected bytes) falls back to 30 FPS without patches."""
+def read_eboot_elf(game_dir):
+    """eboot.bin as a plain ELF, unwrapping a SELF dump of any game version; None if unreadable
+    or an unparsable SELF. Independent of the v1.03 pin below: mods filter by their own AppVer."""
+    try:
+        eboot = (Path(game_dir) / 'eboot.bin').read_bytes()
+    except OSError:
+        return None
+    if eboot[:4] == SELF_MAGIC:
+        try:
+            from prepare import parse_self
+            return bytes(parse_self(eboot)[0])
+        except ValueError:
+            return None
+    return eboot
+
+
+def compile_mods(game_dir, eboot, mods_dir, mods_config, lines):
+    """[(offset, bytes, description)] from the player's mods folder, or [] when mods_dir is not
+    set, the eboot could not be read, or nothing in there is enabled."""
+    if not mods_dir or not eboot:
+        return []
+    try:
+        segments = mod_patches.eboot_segments(eboot)
+        app_version = mod_patches.game_app_version(game_dir)
+        found = mod_patches.external_patches(mods_dir, app_version, TITLE_IDS)
+        selected = mod_patches.external_selection(found, mods_config)
+        return mod_patches.compile_external(selected, segments)
+    except (OSError, ValueError, struct.error) as error:
+        lines.append(f'Mods: {error}: not applied')
+        return []
+
+
+def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
+    """Writes out/patches.bin for the mode plus any enabled mod; returns (applied mode, lines).
+    Any problem with the frame rate patches (other eboot build, unexpected bytes) falls back to
+    30 FPS without them; a mod problem only drops that mod, never the frame rate patches."""
     mode = normalize_mode(mode)
     lines = []
     if mode not in MODES:
         lines.append(f'Frame rate: unknown TLG_FPS={mode!r}; using 30')
         mode = '30'
-    writes = []
+    fps_writes = []
+    eboot = None
     # TLG_FPS_PATCHES="a,b" (measurements): these patches instead of the mode's own.
     names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES] or MODES[mode]
     if names:
@@ -170,15 +216,21 @@ def prepare(game_dir, out_dir, mode):
             try:
                 if eu_build:
                     lines.append('Frame rate: profile CUSA03745 EU 01.00 (verified executable hash)')
-                    writes = mode_writes(eboot, names, EU_100_PATCHES, EU_100_TEXT_SIZE)
+                    fps_writes = mode_writes(eboot, names, EU_100_PATCHES, EU_100_TEXT_SIZE)
                 else:
-                    writes = mode_writes(eboot, names)
+                    fps_writes = mode_writes(eboot, names)
             except ValueError as error:
                 lines.append(f'Frame rate: {error}: patches not applied, 30 FPS')
-                mode, writes = '30', []
-    write_patch_file(Path(out_dir) / 'patches.bin', writes)
-    for _, data, what in writes:
+                mode, fps_writes = '30', []
+    for _, data, what in fps_writes:
         lines.append(f'Frame rate patch {what} ({data.hex()})')
+    mod_writes = []
+    if mods_dir:
+        mod_writes = compile_mods(game_dir, eboot or read_eboot_elf(game_dir), mods_dir, mods_config, lines)
+        for _, data, what in mod_writes:
+            lines.append(f'Mod {what} ({data.hex()})')
+    writes = fps_writes + mod_writes
+    write_patch_file(Path(out_dir) / 'patches.bin', writes)
     lines.append(f'Frame rate: {mode} FPS mode, {len(writes)} patch writes')
     return mode, lines
 
@@ -188,8 +240,10 @@ def main():
     p.add_argument('game_dir')
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--mode', default='30', help='30, 60 or unlocked')
+    p.add_argument('--mods-dir', help='folder of shadPS4/GoldHEN cheat XML files')
+    p.add_argument('--mods-config', help='mods.json: {"enabled": [...], "disabled": [...]}')
     a = p.parse_args()
-    _, lines = prepare(a.game_dir, a.out, a.mode)
+    _, lines = prepare(a.game_dir, a.out, a.mode, a.mods_dir, a.mods_config)
     print('\n'.join(lines))
 
 

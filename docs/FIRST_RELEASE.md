@@ -2,7 +2,9 @@
 
 Prepared, not published. Based on HayatoG/tlg_pc PR #69 commit `63ba4f5`;
 existing authorship, history, GPL and third-party notices are retained.
-Later upstream changes are not implicitly merged. Track them through `upstream`.
+Upstream main through `b8d5f41` is integrated in a separate merge commit,
+preserving its Mods/Cheats support with nothing enabled by default. Track
+later changes through `upstream`. The startup redesign remains deferred.
 
 ## Commit groups
 
@@ -71,10 +73,10 @@ optional tests obtain original functions from the owner's ELF at runtime.
 
 - [x] Curated source-only commits with original history/credits/licenses.
 - [x] Launcher defaults unchanged and experimental switches opt-in.
-- [x] Fresh Windows CPU-only regressions pass: 23 Python tests, 11 native suites;
+- [x] Fresh Windows CPU-only regressions pass: 24 Python tests, 11 native suites;
       909 clock guard mutations rejected, 291600 shared-clock updates, 213180
       native smoother updates, two 30000-update bit-identical 30-FPS comparisons.
-- [ ] Fork created and commits pushed to the intended account.
+- [x] Fork created under b3ndoi and the five curated commits pushed for review.
 - [ ] Clean Windows/Linux builds pass in GitHub Actions.
 - [ ] Packages/source inspected: no game/firmware, dumps, saves, caches, private
       paths, session logs or research data; matching source/licenses included.
