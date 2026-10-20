@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace TlgPhoto {
 namespace { SDL_JoystickID pad_id{}; bool left_click{},right_click{},chord{}; }
@@ -46,6 +47,7 @@ bool HandleEvent(const SDL_Event& e,bool other_ui) {
         e.type==SDL_EVENT_GAMEPAD_AXIS_MOTION);
 }
 void Poll() {
+    if (!runtime_photo_enabled()) return;
     static uint64_t previous=0;
     const uint64_t now=SDL_GetTicksNS();
     const float step=previous ? std::min(float(now-previous)/1e9f,0.05f) : 0;
@@ -60,8 +62,13 @@ void Poll() {
         if (SDL_Gamepad* pad=SDL_GetGamepadFromID(pad_id)) {
             for (int b=0;b<SDL_GAMEPAD_BUTTON_COUNT;++b)
                 if (SDL_GetGamepadButton(pad,SDL_GamepadButton(b))) return;
-            for (int a=0;a<SDL_GAMEPAD_AXIS_COUNT;++a)
-                if (std::abs(int(SDL_GetGamepadAxis(pad,SDL_GamepadAxis(a))))>5000) return;
+            const char* setting=std::getenv("TLG_STICK_DEADZONE");
+            const double zone=std::clamp(setting ? std::atof(setting) : 0.10,0.0,0.5);
+            const int neutral=std::isfinite(zone) ? int(zone*32767) : 0;
+            for (int a=0;a<SDL_GAMEPAD_AXIS_COUNT;++a) {
+                const int value=SDL_GetGamepadAxis(pad,SDL_GamepadAxis(a));
+                if (a>=SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? value>127 : std::abs(value)>neutral) return;
+            }
         }
         runtime_photo_release_inputs();
         return;
