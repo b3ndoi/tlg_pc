@@ -491,6 +491,12 @@ def build_env(settings, extra=None):
     env.pop('TLG_TROPHY_STATE', None)
     if settings.get('track_achievements', True) and applied_frame_rate == '60':
         env['TLG_TROPHY_STATE'] = '1'
+    # TLG's open scenes can queue thousands of draws before a precise CPU buffer fault. The
+    # first fault at 60 FPS downloads the arena's exact GPU-dirty islands with one completion;
+    # the default/30-FPS path deliberately retains its established readback behavior.
+    if applied_frame_rate == '60':
+        env.setdefault('TLG_BUFFER_READBACK_BATCH_MB', '64')
+        env.setdefault('TLG_BUFFER_READBACK_STATS', '1')
     if extra:
         env.update(extra)
     return env
