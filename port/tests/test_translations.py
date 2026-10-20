@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -127,6 +128,28 @@ class TranslationTests(unittest.TestCase):
         catalog['entries']['jump_chain'] = '[ Drugačije ]'
         with self.assertRaises(ValueError):
             ct.compile_pack(catalog, targets, ct.default_font())
+        catalog['entries'] = {}
+        with self.assertRaises(ValueError):
+            ct.compile_pack(catalog, targets, ct.default_font())
+
+    @unittest.skipIf(Image is None, 'Pillow optional locally; installed in translation CI')
+    def test_cli_unicode_paths_utf8_pipe_and_exclusive_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = copy.deepcopy(self.sr)
+            catalog['entries'] = {'aim':'[ Osvetli ]'}
+            source, output = root/'čćžšđ.json', root/'ČĆŽŠĐ.tlgtrn'
+            source.write_text(json.dumps(catalog, ensure_ascii=False), encoding='utf-8')
+            argv = [sys.executable, str(PORT/'scripts/compile_translation.py'),
+                    '--catalog', str(source), '--output', str(output)]
+            env = {**os.environ, 'PYTHONIOENCODING':'ascii'}
+            first = subprocess.run(argv, capture_output=True, env=env, timeout=20)
+            self.assertEqual(first.returncode, 0, first.stderr.decode('utf-8'))
+            self.assertIn(str(output), first.stdout.decode('utf-8'))
+            before = output.read_bytes()
+            second = subprocess.run(argv, capture_output=True, env=env, timeout=20)
+            self.assertNotEqual(second.returncode, 0)
+            self.assertEqual(before, output.read_bytes())
 
     def test_opt_in_environment_does_not_change_30fps_or_game_language(self):
         settings = {**tlg_run.DEFAULT_SETTINGS, 'game_language':'en'}

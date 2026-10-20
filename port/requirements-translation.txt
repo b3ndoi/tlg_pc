@@ -1,2 +1,2 @@
 # Offline text-to-texture contributor tool only; not a runtime/game dependency.
-Pillow>=11.0,<13
+Pillow>=10.2,<13

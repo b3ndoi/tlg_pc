@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 from string import Formatter
 import struct
+import sys
 import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -184,6 +185,8 @@ def compile_pack(catalog, target_table, font_path, preview=None):
         if preview:
             image.save(preview / (key + '.png'))
         records[identity] = text, encode_bc7(image)
+    if not records:
+        raise ValueError('No translated entries to compile; leave the pack selector off')
     output = io.BytesIO()
     output.write(MAGIC + struct.pack('<I', len(records)))
     for (width, height, source_bytes, digest), (_, pixels) in records.items():
@@ -221,6 +224,10 @@ def main():
 
 
 if __name__ == '__main__':
+    # Also preserve Serbian paths when redirected through a legacy Windows pipe.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace')
     try:
         main()
     except (OSError, ValueError, KeyError, ImportError) as error:
