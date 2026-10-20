@@ -39,6 +39,10 @@ new game or a claim of ownership over The Last Guardian.
   corrections, plus synchronized slow-motion animation and physics clocks.
 - **Experimental native 1440p:** a guarded regular-engine 2560×1440 profile,
   distinct from the earlier scene-supersampling path with a 1080p final image.
+- **Experimental device prompts:** optional keyboard/mouse, PS5 and Xbox
+  tutorial/controller-guide images, automatic switching or a manual override,
+  and a display-resolution guide using an optional local controller PNG.
+  [Coverage and limitations](docs/BUTTON_PROMPTS.md); original prompts stay default.
 - **Testing and release safeguards:** CPU-only regression fixtures, Windows/Linux
   build and package checks, a release checklist and manual draft-only release
   creation.

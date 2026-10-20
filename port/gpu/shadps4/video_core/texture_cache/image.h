@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+#include <atomic>
+#include "tlg_prompts.h"
 
 #include "common/enum.h"
 #include "common/incremental_id.h"
@@ -112,6 +114,15 @@ struct Image {
     bool IsTracked() {
         return track_addr != 0 && track_addr_end != 0;
     }
+    bool PromptRefreshNeeded() const {
+        if (!TlgPrompts::Active()) return false;
+        const bool matched = std::atomic_ref<u32>(const_cast<u32&>(prompt_kind)).load(std::memory_order_acquire)!=0;
+        // Also discover textures already uploaded while the option was off. Unmatched
+        // candidates are checked at most once per selection/binding generation.
+        if (!matched && (TlgPrompts::Shown()==TlgPrompts::Original ||
+            !TlgPrompts::Candidate(info.size.width,info.size.height,info.guest_size))) return false;
+        return std::atomic_ref<u64>(const_cast<u64&>(prompt_generation)).load(std::memory_order_acquire)!=TlgPrompts::Generation();
+    }
 
     bool SafeToDownload() const {
         return True(flags & ImageFlagBits::GpuModified) && False(flags & (ImageFlagBits::Dirty));
@@ -204,6 +215,8 @@ public:
     boost::container::static_vector<u64, 16> mip_hashes{};
     u64 lru_id{};
     u64 hash{};
+    u32 prompt_kind = 0; // host-only identity; no extracted contents or guest writes
+    u64 prompt_generation = 0;
 
 private:
     static Common::IncrementalIdProvider<u64> global_image_uid;

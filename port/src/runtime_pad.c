@@ -279,6 +279,21 @@ static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
     return used;
 }
 
+static void publish_prompt_bindings(int pad) {
+    /* Publish only display metadata from the effective map. Sampling/mappings are unchanged. */
+    static const uint32_t prompt_buttons[]={BTN_CROSS,BTN_CIRCLE,BTN_SQUARE,BTN_TRIANGLE,
+        BTN_L1,BTN_R1,BTN_L2,BTN_R2,BTN_L3,BTN_R3,BTN_OPTIONS,CLICK_LEFT,CLICK_RIGHT,
+        BTN_UP,BTN_DOWN,BTN_LEFT,BTN_RIGHT};
+    const char *labels[17]={0};
+    for (size_t p=0;p<17;++p) for (size_t k=0;k<key_map.count;++k) {
+        if (key_map.entries[k].ps!=prompt_buttons[p]) continue;
+        const int source=key_map.entries[k].source;
+        if (source>=MOUSE_SOURCE && source<MOUSE_SOURCE_END)
+            labels[p]=mouse_names[source-MOUSE_SOURCE].name;
+        else if (!labels[p]) labels[p]=SDL_GetScancodeName((SDL_Scancode)source);
+    }
+    tlggpu_prompts_bindings(labels,17,pad!=0);
+}
 static void load_button_maps(void) {
     static bool loaded;
     if (loaded) return;
@@ -290,6 +305,7 @@ static void load_button_maps(void) {
     tlggpu_input_settings(&in);
     const int keys=apply_button_map(&key_map,env && *env ? env : in.key_map,true);
     if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
+    publish_prompt_bindings(pad);
 }
 
 /* Motion (orientation quaternion, acceleration in g, angular velocity in rad/s; axes as SDL's:

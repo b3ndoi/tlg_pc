@@ -6,6 +6,13 @@
 int tlggpu_overlay_captures_input(void) { return 0; }
 void tlggpu_mouse_take(TlgGpuMouse *m) { memset(m,0,sizeof(*m)); }
 void tlggpu_input_settings(TlgGpuInputSettings *s) { memset(s,0,sizeof(*s)); }
+static char prompt_labels[17][64];
+static int prompt_custom;
+void tlggpu_prompts_bindings(const char *const *labels,int count,int custom) {
+    assert(count==17);
+    prompt_custom=custom;
+    for(int i=0;i<count;++i) snprintf(prompt_labels[i],64,"%s",labels[i]?labels[i]:"");
+}
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -77,5 +84,13 @@ int main(void) {
     ButtonMap gp=pad_map;
     assert(apply_button_map(&gp,"cross=a|b",false)==1);
     assert(pressed_by(&gp,SDL_GAMEPAD_BUTTON_SOUTH)==BTN_CROSS && pressed_by(&gp,SDL_GAMEPAD_BUTTON_EAST)==(BTN_CROSS|BTN_CIRCLE));
-    puts("PASS: pad and key maps");
+    publish_prompt_bindings(0);
+    assert(!prompt_custom && strcmp(prompt_labels[0],"Space")==0);
+    assert(strcmp(prompt_labels[3],"Mouse Left")==0);
+    assert(strcmp(prompt_labels[5],"Mouse Right")==0);
+    assert(apply_button_map(&key_map,"cross=Mouse X1,triangle=Z,r1=none",true)==3);
+    publish_prompt_bindings(1);
+    assert(prompt_custom && strcmp(prompt_labels[0],"Mouse X1")==0);
+    assert(strcmp(prompt_labels[3],"Z")==0 && prompt_labels[5][0]==0);
+    puts("PASS: pad and key maps, effective prompt labels and custom-pad fallback metadata");
 }

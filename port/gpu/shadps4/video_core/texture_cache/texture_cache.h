@@ -159,7 +159,7 @@ public:
         constexpr u32 Dirty = static_cast<u32>(ImageFlagBits::Dirty);
         constexpr u32 Registered = static_cast<u32>(ImageFlagBits::Registered);
         constexpr u32 Aliased = static_cast<u32>(ImageFlagBits::Aliased);
-        return (flags & (Dirty | Registered | Aliased)) == Registered &&
+        return !image.PromptRefreshNeeded() && (flags & (Dirty | Registered | Aliased)) == Registered &&
                image.track_addr == image.guest_begin && image.track_addr_end == image.guest_end &&
                image.lru_touched_tick == gc_tick;
     }
@@ -178,7 +178,7 @@ public:
             constexpr u32 Registered = static_cast<u32>(ImageFlagBits::Registered);
             // Images sharing memory with another take the locked path: SynchronizeAlias.
             constexpr u32 Aliased = static_cast<u32>(ImageFlagBits::Aliased);
-            if ((flags & (Dirty | Registered | Aliased)) == Registered &&
+            if (!image.PromptRefreshNeeded() && (flags & (Dirty | Registered | Aliased)) == Registered &&
                 image.track_addr == image.guest_begin && image.track_addr_end == image.guest_end &&
                 image.lru_touched_tick == gc_tick) {
                 return;

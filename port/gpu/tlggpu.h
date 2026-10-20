@@ -77,6 +77,9 @@ typedef struct {
     char key_map[512];
 } TlgGpuInputSettings;
 void tlggpu_input_settings(TlgGpuInputSettings *settings);
+/* Display metadata only: 17 effective key names (Cross..Right, tlg_prompts.h).
+ * Does not modify pad state, guest memory, input ages or timing. */
+void tlggpu_prompts_bindings(const char *const *labels, int count, int custom_controller);
 /* Freeze report (src/runtime_freeze.c): the GPU library marks its blocking calls (event queue,
  * GPU idle and vblank waits, GPU thread commands, readbacks, page faults) through these hooks. */
 typedef void (*TlgGpuWaitBegin)(const char *kind, const void *object, const char *name, uintptr_t frame);

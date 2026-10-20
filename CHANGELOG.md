@@ -2,6 +2,12 @@
 
 ## Unreleased — first Windows candidate
 
+- Add optional device-aware tutorial/controller-guide prompts with automatic
+  selection, sticky manual overrides and original/off defaults. Use host-only,
+  exact-fingerprint texture replacement; geometry-based menu symbols stay original.
+- Add a full-resolution optional local PS5 image and a scalable in-menu guide
+  with button callouts and effective keyboard/mouse bindings. Supplied artwork
+  stays private; public fallback icons are independently code-drawn.
 - Add a tabbed launcher, detected game/revision labels and extracted interface
   translation catalogs, retaining the original credits and 30-FPS defaults.
 - Record existing trophy events locally for newly launched GUI/headless

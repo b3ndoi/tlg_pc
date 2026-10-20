@@ -94,6 +94,8 @@ DEFAULT_SETTINGS = {
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
     'trophy_metadata_dir': '',     # owner-supplied decrypted XML; never bundled/downloaded
     'trophy_show_unknown_icons': False,  # explicit spoiler opt-in; never changes unlock state
+    'button_prompts': 'original',  # optional host-only artwork; no input/timing patches
+    'ps5_prompt_image': '',        # optional local art, never bundled with the port
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
@@ -438,6 +440,16 @@ def window_icon():
         return None
 
 
+def prompt_image(settings):
+    """Read-only lookup; the private source-tree copy is excluded from Git/packages."""
+    configured=settings.get('ps5_prompt_image','')
+    try:
+        path=Path(configured) if configured else PORT_DIR/'user/prompt-art/ps5-controller.png'
+        return path.resolve() if path.is_file() and path.stat().st_size<=64*1024*1024 else None
+    except (OSError,ValueError,TypeError):
+        return None
+
+
 def build_env(settings, extra=None):
     env = dict(os.environ)
     for key, value in DEFAULT_ENV.items():
@@ -447,6 +459,10 @@ def build_env(settings, extra=None):
         game_languages(settings.get('game_dir')).get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
+    if settings.get('button_prompts','original') in ('auto','ps5'):
+        image=prompt_image(settings)
+        if image:
+            env.setdefault('TLG_PS5_PROMPT_IMAGE',str(image))
     # Without the console module the port's own mixer (runtime_ngs2.c) plays the audio.
     env['TLG_NGS2'] = 'native' if ngs2_module(settings) else 'hle'
     env['TLG_CONFIG'] = str(USER_DIR / 'tlg.ini')
@@ -512,6 +528,8 @@ def launch(settings, seconds=0, extra_env=None):
         'mouse_sensitivity': f"{float(settings.get('mouse_sensitivity', 1.0)):.2f}",
         'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False))),
         'key_map': key_map_spec(settings.get('key_map') or {}),
+        'button_prompts': settings.get('button_prompts') if settings.get('button_prompts') in
+            ('original', 'auto', 'keyboard', 'ps5', 'xbox') else 'original',
     })
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
