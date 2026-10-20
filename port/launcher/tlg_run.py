@@ -23,6 +23,7 @@ import shader_cache
 import achievements
 import desktop_notifications
 import localization
+import native_trophies
 
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
 FROZEN = bool(getattr(sys, 'frozen', False))
@@ -91,6 +92,7 @@ DEFAULT_SETTINGS = {
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
     'track_achievements': True,    # observes existing trophy events only; never patches game logic
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
+    'trophy_metadata_dir': '',     # owner-supplied decrypted XML; never bundled/downloaded
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
@@ -467,6 +469,11 @@ def build_env(settings, extra=None):
     # Shaders and pipelines beside the saves (the GPU reads it when it starts; before, Linux used
     # shadPS4's ~/.local/share/shadPS4 and Windows <saves>/user).
     env['TLG_GPU_USER_DIR'] = str(gpu_user_dir())
+    # New native trophy semantics are opt-in for the experimental 60-FPS profile.
+    # The baseline 30-FPS/default runtime behavior is deliberately unchanged.
+    env.pop('TLG_TROPHY_STATE', None)
+    if settings.get('track_achievements', True) and applied_frame_rate == '60':
+        env['TLG_TROPHY_STATE'] = '1'
     if extra:
         env.update(extra)
     return env
@@ -491,6 +498,11 @@ def launch(settings, seconds=0, extra_env=None):
     """Writes the in-game settings, starts the game; returns (process, log path).
     The process's combined output is a text pipe; the caller copies it to the log."""
     USER_DIR.mkdir(parents=True, exist_ok=True)
+    if settings.get('track_achievements', True) and applied_frame_rate == '60':
+        info = achievements.game_info(settings.get('game_dir'))
+        if info:
+            observed = achievements.Store(USER_DIR, info['title_id'])._read_json()
+            native_trophies.seed(USER_DIR, info['title_id'], observed)
     update_ini(USER_DIR / 'tlg.ini', {
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen
         'vsync': int(bool(settings['vsync'])),

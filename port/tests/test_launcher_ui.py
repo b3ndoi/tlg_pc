@@ -20,6 +20,7 @@ from launcher_fixtures import make_game
 import achievements
 import tlg_launcher as ui
 import tlg_run
+from test_trophy_catalog import XML, ICON, trp
 
 
 def widgets(parent):
@@ -122,7 +123,9 @@ class LauncherUITests(unittest.TestCase):
         event = store.unlock(12)
         before = store.path.read_bytes()
         self.app.refresh_achievements()
-        self.assertEqual(self.app.achievement_tree.item('12', 'text'), 'Trophy #12')
+        self.assertIn(12, self.app.achievement_cards)
+        self.assertTrue(self.app.achievement_views[12]['unlocked'])
+        self.assertTrue(self.app.achievement_views[12]['masked'])  # metadata unknown
         self.app.lines.put(('achievement', event))
         self.app.pump()
         self.assertIn('#12', self.app.achievement_toast['text'])
@@ -141,6 +144,38 @@ class LauncherUITests(unittest.TestCase):
         self.app.busy = False
         self.app.refresh_status()
         self.assertFalse(self.app.play_button.instate(['disabled']))
+
+    def test_grid_shows_locked_trophies_without_leaking_hidden_text_or_icon(self):
+        folder = self.game / 'sce_sys/trophy'
+        folder.mkdir()
+        (folder / 'trophy00.trp').write_bytes(trp([('TROP000.PNG', ICON, 0), ('TROP001.PNG', ICON, 0)]))
+        (folder / 'TROP.XML').write_bytes(XML)
+        self.app.refresh_achievements()
+        self.assertEqual(set(self.app.achievement_cards), {0, 1})
+        visible = ' '.join(str(widget.cget('text')) for widget in widgets(self.app.achievement_grid)
+                           if isinstance(widget, ttk.Label))
+        self.assertIn('Fixture master', visible)
+        self.assertIn('Hidden trophy', visible)
+        self.assertNotIn('SECRET', visible)
+        self.assertIsNone(self.app.achievement_views[1]['icon'])
+        self.assertIn('0 / 2', self.app.achievement_summary['text'])
+        self.assertEqual(len(self.app.achievement_images), 1)
+        achievements.Store(self.user, 'CUSA03745').unlock(1)
+        self.app.refresh_achievements()
+        self.assertEqual(self.app.achievement_views[1]['name'], 'SECRET NAME')
+        self.assertIn('1 / 2', self.app.achievement_summary['text'])
+        self.assertFalse(self.app.achievement_views[1]['masked'])
+
+    def test_grid_reflows_without_writing_preferences(self):
+        for key in range(8):
+            achievements.Store(self.user, 'CUSA03745').unlock(key)
+        self.app.refresh_achievements()
+        self.app.layout_achievements(Mock(width=1000))
+        self.assertEqual(self.app.achievement_columns, 4)
+        self.app.layout_achievements(Mock(width=300))
+        self.assertEqual(self.app.achievement_columns, 1)
+        self.assertEqual(self.app.achievement_cards[7].grid_info()['row'], 7)
+        tlg_run.save_settings.assert_not_called()
 
     def test_preparation_uses_snapshot_and_quit_prevents_later_launch(self):
         with patch.object(ui.threading, 'Thread') as thread:
@@ -169,6 +204,29 @@ class LauncherUITests(unittest.TestCase):
         with patch.object(ui.messagebox, 'askyesno', return_value=True):
             self.app.quit()
         process.terminate.assert_called_once()
+
+    def test_quit_waits_for_own_output_reader_before_destroying_ui(self):
+        self.app.busy = True
+        process, reader = Mock(), Mock()
+        process.poll.return_value = None
+        reader.is_alive.return_value = True
+        self.app.process, self.app.game_thread = process, reader
+        with patch.object(ui.messagebox, 'askyesno', return_value=True):
+            self.app.quit()
+        self.assertTrue(self.window.winfo_exists())
+        self.assertTrue(self.app.stopping.is_set())
+        process.terminate.assert_called_once()
+        reader.is_alive.return_value = False
+        self.app.finish_quit()
+
+    def test_launch_closes_only_own_editable_dialogs(self):
+        remap, mods = Mock(), Mock()
+        remap.winfo_exists.return_value = mods.winfo_exists.return_value = True
+        self.app.remap_window, self.app.mods_window = remap, mods
+        with patch.object(ui.threading, 'Thread'):
+            self.app.play()
+        remap.destroy.assert_called_once()
+        mods.destroy.assert_called_once()
 
 
 if __name__ == '__main__':

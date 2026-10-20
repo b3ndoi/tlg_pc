@@ -7,6 +7,7 @@ Play starts the game through tlg_run.py (the same code path as run_tlg.sh) and s
 Settings live in ~/.config/tlg-launcher/settings.json (%APPDATA% on Windows).
 """
 import copy
+import base64
 from collections import deque
 from datetime import datetime
 import os
@@ -24,6 +25,7 @@ import tlg_run  # noqa: E402
 import achievements
 from game_library import game_info
 import localization
+import trophy_catalog
 
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
@@ -318,37 +320,125 @@ class Launcher:
         table.grid(row=5, column=0, sticky='nsew')
         table.columnconfigure(0, weight=1)
         table.rowconfigure(0, weight=1)
-        self.achievement_tree = ttk.Treeview(table, columns=('date',), show='tree headings', height=9)
-        self.achievement_tree.heading('#0', text=self.t('achievement_id'))
-        self.achievement_tree.heading('date', text=self.t('unlocked_at'))
-        self.achievement_tree.column('#0', width=220)
-        self.achievement_tree.column('date', width=260)
-        scrollbar = ttk.Scrollbar(table, orient='vertical', command=self.achievement_tree.yview)
-        self.achievement_tree.configure(yscrollcommand=scrollbar.set)
-        self.achievement_tree.grid(row=0, column=0, sticky='nsew')
+        self.achievement_canvas = tk.Canvas(table, background='#11191f', highlightthickness=0)
+        self.achievement_grid = ttk.Frame(self.achievement_canvas)
+        self.achievement_window = self.achievement_canvas.create_window(0, 0, window=self.achievement_grid, anchor='nw')
+        self.achievement_cards, self.achievement_views, self.achievement_images = {}, {}, []
+        self.achievement_columns = 0
+        scrollbar = ttk.Scrollbar(table, orient='vertical', command=self.achievement_canvas.yview)
+        self.achievement_canvas.configure(yscrollcommand=scrollbar.set)
+        self.achievement_canvas.grid(row=0, column=0, sticky='nsew')
+        self.achievement_grid.bind('<Configure>', lambda _: self.achievement_canvas.configure(
+            scrollregion=self.achievement_canvas.bbox('all')))
+        self.achievement_canvas.bind('<Configure>', self.layout_achievements)
+        self.achievement_canvas.bind('<MouseWheel>', lambda event: self.achievement_canvas.yview_scroll(
+            -int(event.delta / 120), 'units'))
         scrollbar.grid(row=0, column=1, sticky='ns')
         ttk.Label(page, text=self.t('achievement_help'), style='Muted.TLabel',
                   wraplength=880, justify='left').grid(row=6, column=0, sticky='w', pady=10)
-        ttk.Button(page, text=self.t('refresh'), command=self.refresh_achievements).grid(row=7, column=0, sticky='w')
+        actions = ttk.Frame(page)
+        actions.grid(row=7, column=0, sticky='ew')
+        ttk.Button(actions, text=self.t('refresh'), command=self.refresh_achievements).pack(side='left')
+        ttk.Button(actions, text=self.t('trophy_metadata'), command=self.choose_trophy_metadata).pack(side='left', padx=8)
+
+    def layout_achievements(self, event=None):
+        if not getattr(self, 'achievement_canvas', None):
+            return
+        width = event.width if event else self.achievement_canvas.winfo_width()
+        self.achievement_canvas.itemconfigure(self.achievement_window, width=max(1, width))
+        columns = max(1, width // 230)
+        if columns == self.achievement_columns:
+            return
+        for column in range(max(columns, self.achievement_columns)):
+            self.achievement_grid.columnconfigure(column, weight=1 if column < columns else 0,
+                                                   uniform='trophies' if column < columns else '')
+        self.achievement_columns = columns
+        for index, card in enumerate(self.achievement_cards.values()):
+            card.grid(row=index // columns, column=index % columns, sticky='nsew', padx=5, pady=5)
+
+    def choose_trophy_metadata(self):
+        if self.busy:
+            return
+        folder = filedialog.askdirectory(title=self.t('trophy_metadata'))
+        if not folder:
+            return
+        try:
+            catalog = trophy_catalog.Catalog(self.settings['game_dir'], folder,
+                                             localization.language(self.settings))
+            if not catalog.complete:
+                raise trophy_catalog.CatalogError(self.t('metadata_needed'))
+        except (OSError, trophy_catalog.CatalogError) as error:
+            messagebox.showerror(self.t('error'), str(error))
+            return
+        self.settings['trophy_metadata_dir'] = folder
+        tlg_run.save_settings(self.settings)
+        self.refresh_achievements()
 
     def refresh_achievements(self):
-        if not getattr(self, 'achievement_tree', None):
+        if not getattr(self, 'achievement_grid', None):
             return
-        self.achievement_tree.delete(*self.achievement_tree.get_children())
+        for card in self.achievement_grid.winfo_children():
+            card.destroy()
+        self.achievement_cards, self.achievement_views, self.achievement_images = {}, {}, []
+        self.achievement_columns = 0
         info = game_info(self.settings.get('game_dir'))
         if not info:
             self.achievement_summary.configure(text=self.t('achievement_missing'))
             return
         try:
             records = achievements.Store(tlg_run.USER_DIR, info['title_id']).read()
-        except (OSError, achievements.StoreError) as error:
+            catalog = trophy_catalog.Catalog(self.settings['game_dir'], self.settings.get('trophy_metadata_dir', ''),
+                                             localization.language(self.settings))
+        except (OSError, achievements.StoreError, trophy_catalog.CatalogError) as error:
             self.achievement_summary.configure(text=self.t('achievement_error', error=str(error)))
             return
-        self.achievement_summary.configure(text=self.t('achievement_count', count=len(records), title=info['title_id'])
-                                           if records else self.t('achievement_empty'))
-        for key, record in sorted(records.items(), key=lambda item: item[1]['unlocked_at'], reverse=True):
-            date = datetime.fromisoformat(record['unlocked_at']).astimezone().strftime('%Y-%m-%d %H:%M:%S')
-            self.achievement_tree.insert('', 'end', iid=key, text=self.t('trophy_name', id=key), values=(date,))
+        for key in records:
+            catalog.trophies.setdefault(int(key), dict(id=int(key), known=False, hidden=True,
+                                                       name='', detail='', grade=''))
+        unlocked_count = sum(str(key) in records for key in catalog.trophies)
+        text = self.t('trophy_progress', count=unlocked_count, total=len(catalog.trophies)) if catalog.trophies else self.t('achievement_empty')
+        if catalog.trophies and not catalog.complete:
+            text += '  ' + self.t('metadata_needed')
+        self.achievement_summary.configure(text=text)
+        for key, entry in sorted(catalog.trophies.items()):
+            unlocked = str(key) in records
+            try:
+                view = catalog.view(key, unlocked)
+            except (OSError, trophy_catalog.CatalogError):
+                view = dict(id=key, masked=not entry['known'] or entry['hidden'] and not unlocked,
+                            unlocked=unlocked, name=entry['name'], detail=entry['detail'], grade=entry['grade'], icon=None)
+                if view['masked']:
+                    view.update(name='', detail='', grade='')
+            self.achievement_views[key] = view
+            card = ttk.LabelFrame(self.achievement_grid, padding=12)
+            self.achievement_cards[key] = card
+            name = (self.t('hidden_trophy') if entry['known'] else self.t('trophy_name', id=key)) if view['masked'] else view['name']
+            icon = ttk.Label(card, text='?' if view['masked'] else '\u25c7', anchor='center',
+                             font=('TkDefaultFont', 30, 'bold'))
+            icon.pack(fill='x', pady=(0, 8))
+            if view['icon']:
+                try:
+                    image = tk.PhotoImage(data=base64.b64encode(view['icon']).decode('ascii'))
+                    image = image.subsample(max(1, (max(image.width(), image.height()) + 71) // 72))
+                    self.achievement_images.append(image)
+                    icon.configure(image=image, text='')
+                except tk.TclError:
+                    pass
+            ttk.Label(card, text=name, wraplength=190, justify='center', anchor='center').pack(fill='x')
+            ttk.Label(card, text=self.t('trophy_unlocked' if unlocked else 'trophy_locked'),
+                      style='Success.TLabel' if unlocked else 'Muted.TLabel', anchor='center').pack(fill='x', pady=5)
+            if view['detail']:
+                ttk.Label(card, text=view['detail'], wraplength=190, justify='left',
+                          style='Muted.TLabel').pack(fill='x', pady=5)
+            if unlocked:
+                date = datetime.fromisoformat(records[str(key)]['unlocked_at']).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                ttk.Label(card, text=date, style='Muted.TLabel', anchor='center').pack(fill='x')
+            for widget in (card, *card.winfo_children()):
+                widget.bind('<MouseWheel>', lambda event: self.achievement_canvas.yview_scroll(
+                    -int(event.delta / 120), 'units'))
+                widget.bind('<Button-4>', lambda _: self.achievement_canvas.yview_scroll(-1, 'units'))
+                widget.bind('<Button-5>', lambda _: self.achievement_canvas.yview_scroll(1, 'units'))
+        self.layout_achievements()
 
     def build_log(self, page):
         page.columnconfigure(0, weight=1)
@@ -738,6 +828,10 @@ class Launcher:
         if tlg_run.check_game(self.settings['game_dir']):
             self.refresh_status()
             return
+        for name in ('remap_window', 'mods_window'):
+            dialog = getattr(self, name, None)
+            if dialog is not None and dialog.winfo_exists():
+                dialog.destroy()  # do not leave an editable dialog open during preparation
         self.busy = True
         self.stopping.clear()
         self.append(self.t('preparing'))

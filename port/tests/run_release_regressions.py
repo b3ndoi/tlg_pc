@@ -30,10 +30,22 @@ def main():
     if elf and not elf.is_file():
         parser.error('--elf must be an existing local file')
     for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
-                 'test_launcher_localization.py', 'test_launcher_ui.py'):
+                 'test_launcher_localization.py', 'test_launcher_ui.py', 'test_trophy_catalog.py',
+                 'test_native_trophies.py', 'test_trophy_save_audit.py'):
         run([sys.executable, PORT/'tests'/name])
     if sys.platform != 'win32':
-        print('SKIP: Windows native fixtures require Windows/MSYS2 CLANG64')
+        cc = shutil.which(os.environ.get('CC', 'cc'))
+        if not cc:
+            parser.error('a C compiler is required for native trophy/service fixtures')
+        with tempfile.TemporaryDirectory(prefix='tlg-trophy-tests-') as directory:
+            root = Path(directory)
+            for name, sources in (('trophy-state', ['tests/test_runtime_trophies.c', 'src/runtime_trophies.c']),
+                                  ('services', ['tests/test_services.c', 'src/runtime_trophies.c'])):
+                target = root / name
+                run([cc, '-std=c11', '-O2', '-UNDEBUG', '-Wall', '-Wextra', '-Werror', '-pthread',
+                     '-I.', '-Isrc', *sources, '-o', target])
+                run([target, root / (name + '-state')])
+        print('PASS: native trophy/services fixtures; SKIP: other Windows-only fixtures')
         return
     cc, cxx = shutil.which('clang'), shutil.which('clang++')
     if not cc or not cxx:
@@ -51,6 +63,9 @@ def main():
         ('input-timing-60', ['tests/test_input_timing_60_win.cpp', 'src/input_timing_60.c',
                             'src/climb_diagnostics.c'], [], [elf] if elf else []),
         ('clock-quantization', ['tests/test_clock_quantization.cpp'], [], []),
+        ('trophy-state', ['tests/test_runtime_trophies.c', 'src/runtime_trophies.c'], ['-pthread'], []),
+        ('services', ['tests/test_services.c', 'src/runtime_trophies.c', 'src/compat_win.c'],
+         ['-pthread', '-lbcrypt', '-lonecore'], []),
     ]
     if elf:
         native += [
@@ -80,7 +95,22 @@ def main():
                 objects.append(target)
             executable = output/f'{name}.exe'
             run([cxx, *objects, *extra, '-o', executable])
-            run([executable, *arguments])
+            if name == 'trophy-state':
+                bridge = "import sys;sys.path.insert(0,'launcher');import native_trophies as n;"
+                run([sys.executable, '-c', bridge + "n.seed(sys.argv[1],'CUSA03745',{'9':{'unlocked_at':'2026-10-20T12:00:00+00:00','source':'game_trophy'}},3)", output / 'native-trophy-state'])
+            private = [output / ('native-' + name + '-state')] if name in ('trophy-state', 'services') else []
+            # Keep the bridge's seed/output name stable for its Python checks.
+            if name == 'trophy-state':
+                private = [output / 'native-trophy-state']
+            run([executable, *private, *arguments])
+            if name == 'trophy-state':
+                run([sys.executable, '-c', bridge + "r=n.read(sys.argv[1],'CUSA03745',3);assert set(r)=={'9','10'};assert r['9']['unlocked_at']=='2026-10-20T12:00:00+00:00';print('Python/native wire-format merge roundtrip passed')", output / 'native-trophy-state'])
+                processes = [subprocess.Popen([str(executable), str(output / 'native-trophy-state'),
+                                                'parallel', str(i)]) for i in range(12)]
+                for process in processes:
+                    if process.wait(timeout=15):
+                        raise RuntimeError('Concurrent native trophy writer failed')
+                run([sys.executable, '-c', bridge + "r=n.read(sys.argv[1],'CUSA03745',4);assert set(r)==set(map(str,range(12)));print('12 concurrent native processes merged without loss')", output / 'native-trophy-state'])
     print('PASS: release regressions complete; no game process started or attached')
 
 

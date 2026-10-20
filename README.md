@@ -171,10 +171,13 @@ catalogs, with English fallback for additional languages.
 
 New trophy-unlock events from games started through this launcher or its
 headless `--play` path can be recorded under
-`user/achievements/<TITLE_ID>.json`. Repeated events are deduplicated. The page
-uses trophy IDs; original names/icons, old save/PSN progress and custom
-challenges are **not** imported or inferred. This is local tracking, not PSN
-synchronization or a change to the game's trophy API.
+`user/achievements/<TITLE_ID>.json`. Repeated events are deduplicated. A
+responsive grid reads the owner's local trophy icons and decrypted XML names;
+hidden or unknown entries are masked with a question mark. No artwork, keys
+or extracted game metadata are bundled. The experimental 60-FPS tracking path
+can opt into native per-user/title persistent unlock queries; 30-FPS/default
+native semantics stay unchanged. Old save/PSN progress and custom challenges
+are **not** guessed or automatically imported.
 
 Optional Windows notifications are off by default. Unlocks still persist if
 Windows suppresses a notification. No existing game/log is attached to or

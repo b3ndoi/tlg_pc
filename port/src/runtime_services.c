@@ -510,37 +510,121 @@ static ABI int32_t ime_result(uint32_t *result) {
 }
 static ABI int32_t ime_term(void) { memset(&ime,0,sizeof(ime)); return 0; }
 
-/* ---- Trophies: accepted locally, recorded in the log ---- */
+/* ---- Trophies: legacy log-only, opt-in persistent local state ---- */
+static struct { int32_t id,user; } trophy_contexts[16];
+static int32_t trophy_handles[32];
+static int32_t trophy_user(int32_t ctx,int32_t handle) {
+    int32_t user=0; int valid=0;
+    pthread_mutex_lock(&lock);
+    for (unsigned i=0;i<16;++i) if (trophy_contexts[i].id==ctx && ctx>0) user=trophy_contexts[i].user;
+    for (unsigned i=0;i<32;++i) if (trophy_handles[i]==handle && handle>0) valid=1;
+    pthread_mutex_unlock(&lock);
+    return valid ? user : 0;
+}
 static ABI int32_t trophy_context(int32_t *ctx,int32_t user,uint32_t label,uint64_t options) {
-    (void)user; (void)label; (void)options;
     if (!ctx) return TROPHY_INVALID;
+    if (runtime_trophies_enabled()) {
+        if (user<=0 || label || options) return TROPHY_INVALID;
+        int32_t id=new_id(), result=TROPHY_INVALID;
+        pthread_mutex_lock(&lock);
+        for (unsigned i=0;i<16;++i) if (!trophy_contexts[i].id) {
+            trophy_contexts[i].id=id; trophy_contexts[i].user=user; *ctx=id; result=0; break;
+        }
+        pthread_mutex_unlock(&lock); return result;
+    }
     *ctx=new_id(); return 0;
 }
-static ABI int32_t trophy_handle(int32_t *handle) { if (!handle) return TROPHY_INVALID; *handle=new_id(); return 0; }
-static ABI int32_t trophy_register(int32_t ctx,int32_t handle,uint64_t options) { (void)ctx; (void)handle; (void)options; return 0; }
+static ABI int32_t trophy_handle(int32_t *handle) {
+    if (!handle) return TROPHY_INVALID;
+    int32_t id=new_id();
+    if (runtime_trophies_enabled()) {
+        int32_t result=TROPHY_INVALID;
+        pthread_mutex_lock(&lock);
+        for (unsigned i=0;i<32;++i) if (!trophy_handles[i]) { trophy_handles[i]=id; *handle=id; result=0; break; }
+        pthread_mutex_unlock(&lock); return result;
+    }
+    *handle=id; return 0;
+}
+static ABI int32_t trophy_register(int32_t ctx,int32_t handle,uint64_t options) {
+    if (runtime_trophies_enabled() && (!trophy_user(ctx,handle) || options)) return TROPHY_INVALID;
+    return 0;
+}
 static ABI int32_t trophy_unlock(int32_t ctx,int32_t handle,int32_t id,int32_t *platinum) {
-    (void)ctx; (void)handle;
-    printf("Runtime: trophy %d unlocked\n",id);
     if (platinum) *platinum=-1;
+    if (runtime_trophies_enabled()) {
+        int32_t user=trophy_user(ctx,handle);
+        if (!user || id<0 || id>=128) return TROPHY_INVALID;
+        int result=runtime_trophies_unlock(user,id);
+        if (result==1) return (int32_t)0x8055160C; /* TROPHY_ALREADY_UNLOCKED */
+        if (result) {
+            fputs("Achievements: native state unavailable; existing progress preserved\n",stderr);
+            return (int32_t)0x80551611; /* BROKEN_DATA: never pretend a failed write succeeded */
+        }
+    }
+    printf("Runtime: trophy %d unlocked\n",id);
     return 0;
 }
 static ABI int32_t trophy_game_info(int32_t ctx,int32_t handle,void *details,void *data) {
-    (void)ctx; (void)handle;
+    int32_t user=0;
+    if (runtime_trophies_enabled() && !(user=trophy_user(ctx,handle))) return TROPHY_INVALID;
     if (details) { uint64_t size; memcpy(&size,details,8); memset((char *)details+8,0,size>8 && size<4096 ? size-8 : 0); }
     if (data) { uint64_t size; memcpy(&size,data,8); memset((char *)data+8,0,size>8 && size<4096 ? size-8 : 0); }
+    if (user && data) {
+        uint64_t size; memcpy(&size,data,8);
+        if (size==32) {
+            uint32_t flags[4],count;
+            if (runtime_trophies_read(user,flags,&count,NULL)) return TROPHY_INVALID;
+            memcpy((char *)data+8,&count,4);
+        }
+    }
     return 0;
 }
 static ABI int32_t trophy_info(int32_t ctx,int32_t handle,int32_t id,void *details,void *data) {
-    (void)id; return trophy_game_info(ctx,handle,details,data);
+    if (!runtime_trophies_enabled()) return trophy_game_info(ctx,handle,details,data);
+    int32_t user=trophy_user(ctx,handle); uint32_t flags[4],count; uint64_t stamps[128];
+    if (!user || id<0 || id>=128 || runtime_trophies_read(user,flags,&count,stamps)) return TROPHY_INVALID;
+    /* The optional data struct has an exact ABI. Names/catalog/grades remain
+     * the owner-supplied launcher's concern; do not fabricate native metadata. */
+    if (data) {
+        uint64_t size; memcpy(&size,data,8); if (size!=24) return TROPHY_INVALID;
+    }
+    int32_t result=trophy_game_info(ctx,handle,details,data);
+    if (data) {
+        memcpy((char *)data+8,&id,4);
+        ((unsigned char *)data)[12]=stamps[id]!=0;
+        uint64_t tick=stamps[id] ? (stamps[id]+UINT64_C(62135596800))*UINT64_C(1000000) : 0;
+        memcpy((char *)data+16,&tick,8);
+    }
+    return result;
 }
 /* Nothing is unlocked on this console: an empty 128-trophy flag set. */
 static ABI int32_t trophy_unlock_state(int32_t ctx,int32_t handle,uint32_t *flags,uint32_t *count) {
     if (!flags || !count) return TROPHY_INVALID;
     if (ctx<=0 || handle<=0) return TROPHY_INVALID;
+    if (runtime_trophies_enabled()) {
+        int32_t user=trophy_user(ctx,handle);
+        return user && !runtime_trophies_read(user,flags,count,NULL) ? 0 : TROPHY_INVALID;
+    }
     memset(flags,0,16); *count=0;
     return 0;
 }
 static ABI int32_t trophy_release(int32_t id) { return id>0 ? 0 : TROPHY_INVALID; }
+static ABI int32_t trophy_destroy_handle(int32_t id) {
+    if (!runtime_trophies_enabled()) return trophy_release(id);
+    int32_t result=TROPHY_INVALID;
+    pthread_mutex_lock(&lock);
+    for (unsigned i=0;i<32;++i) if (id>0 && trophy_handles[i]==id) { trophy_handles[i]=0; result=0; break; }
+    pthread_mutex_unlock(&lock); return result;
+}
+static ABI int32_t trophy_destroy_context(int32_t id) {
+    if (!runtime_trophies_enabled()) return trophy_release(id);
+    int32_t result=TROPHY_INVALID;
+    pthread_mutex_lock(&lock);
+    for (unsigned i=0;i<16;++i) if (id>0 && trophy_contexts[i].id==id) {
+        trophy_contexts[i].id=trophy_contexts[i].user=0; result=0; break;
+    }
+    pthread_mutex_unlock(&lock); return result;
+}
 
 /* ---- PlayGo: fully installed package ---- */
 static int playgo_handle, playgo_chunks=-1;
@@ -743,7 +827,7 @@ static const RuntimeExport exports[]={
     {"sceNpTrophyRegisterContext",trophy_register}, {"sceNpTrophyUnlockTrophy",trophy_unlock},
     {"sceNpTrophyGetGameInfo",trophy_game_info}, {"sceNpTrophyGetTrophyInfo",trophy_info},
     {"sceNpTrophyGetTrophyUnlockState",trophy_unlock_state}, {"sceNpTrophyAbortHandle",trophy_release},
-    {"sceNpTrophyDestroyHandle",trophy_release}, {"sceNpTrophyDestroyContext",trophy_release},
+    {"sceNpTrophyDestroyHandle",trophy_destroy_handle}, {"sceNpTrophyDestroyContext",trophy_destroy_context},
     {"scePlayGoInitialize",playgo_init}, {"scePlayGoOpen",playgo_open}, {"scePlayGoGetChunkId",playgo_chunk_ids},
     {"scePlayGoGetLocus",playgo_locus}, {"scePlayGoSetInstallSpeed",playgo_speed},
     {"scePlayGoGetInstallSpeed",playgo_get_speed}, {"scePlayGoGetProgress",playgo_progress},

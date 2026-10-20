@@ -13,7 +13,7 @@
   "achievement_empty": "Nenhuma conquista registrada nesta cópia ainda. Inicie por aqui para registrar novos eventos de troféu.",
   "achievement_error": "Não foi possível ler o progresso local: {error}",
   "achievement_folder": "Pasta de dados de conquistas",
-  "achievement_help": "Apenas eventos de troféu existentes. Nomes/ícones e progresso antigo da PSN não são importados; as entradas usam IDs. Desafios personalizados ficam para depois.",
+  "achievement_help": "Apenas metadados de troféus fornecidos pelo dono. Troféus ocultos e metadados ausentes ficam mascarados até poderem ser revelados. Progresso do save/PSN não é inferido nem importado automaticamente.",
   "achievement_id": "Troféu",
   "achievement_missing": "Selecione a pasta do jogo primeiro. Abrir esta página não cria arquivos de conquistas.",
   "achievement_notifications": "Notificações de conquistas do Windows (opcional)",
@@ -125,5 +125,11 @@
   "vram": "Orçamento do cache de texturas (MB de VRAM)",
   "vram_hint": "Placa de 6 GB: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. É a memória da placa de vídeo (VRAM), não a RAM; nunca acima da VRAM da placa.",
   "vsync": "VSync",
-  "Windowed": "Janela"
+  "Windowed": "Janela",
+  "trophy_metadata": "Escolher pasta do XML de troféus descriptografado…",
+  "metadata_needed": "Nomes e opções de troféus ocultos exigem XML descriptografado. Entradas desconhecidas ficam ocultas.",
+  "hidden_trophy": "Troféu oculto",
+  "trophy_progress": "{count} / {total} troféus desbloqueados localmente",
+  "trophy_locked": "Bloqueado",
+  "trophy_unlocked": "Desbloqueado"
 }

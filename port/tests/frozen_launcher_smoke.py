@@ -8,11 +8,13 @@ import achievements
 import desktop_notifications
 import game_library
 import localization
+import trophy_catalog
+import native_trophies
 from launcher_fixtures import make_game
 
 assert getattr(sys, 'frozen', False), 'This check must run inside the frozen launcher'
 bundle = Path(sys._MEIPASS).resolve()
-for module in (achievements, desktop_notifications, game_library, localization):
+for module in (achievements, desktop_notifications, game_library, localization, trophy_catalog, native_trophies):
     assert Path(module.__file__).resolve().is_relative_to(bundle), module.__name__
 assert len(localization.ENGLISH) > 100, 'English catalog not bundled'
 assert localization.text('play', 'pt_BR') == 'Jogar'

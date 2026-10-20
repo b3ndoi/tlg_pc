@@ -1052,6 +1052,8 @@ int main(int argc, char **argv) {
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0);
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
+        if (sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
+            runtime_trophies_configure(id,runtime_file_user_dir());
     }
     tlggpu_register_kernel();
 #ifdef _WIN32

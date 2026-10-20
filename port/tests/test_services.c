@@ -23,7 +23,7 @@ int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)u
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 uint64_t runtime_savedata_size(int32_t user, const char *dir) { (void)user; (void)dir; return 0; }
 
-int main(void) {
+int main(int argc,char **argv) {
     unsigned char param[128]={0}, result[64]={0}; /* the game zeroes the pointers it does not want */
     uint32_t value;
 
@@ -116,6 +116,37 @@ int main(void) {
     uint32_t flags[4]={~0u,~0u,~0u,~0u}, count=7;
     assert(trophy_unlock_state(1,1,flags,&count)==0 && !flags[0] && !flags[3] && count==0);
     assert(trophy_unlock_state(1,1,NULL,&count)==TROPHY_INVALID && trophy_release(0)==TROPHY_INVALID);
+
+    if (argc==2) {
+#ifdef _WIN32
+        assert(!_putenv_s("TLG_TROPHY_STATE","1"));
+#else
+        assert(!setenv("TLG_TROPHY_STATE","1",1));
+#endif
+        runtime_trophies_configure("CUSA03745",argv[1]);
+        int32_t context=0,other_context=0,trophy_h=0,platinum=0;
+        assert(!trophy_context(&context,1,0,0) && !trophy_context(&other_context,2,0,0));
+        assert(!trophy_handle(&trophy_h) && !trophy_register(context,trophy_h,0));
+        assert(!trophy_unlock(context,trophy_h,6,&platinum) && platinum==-1);
+        assert(trophy_unlock(context,trophy_h,6,&platinum)==(int32_t)0x8055160C);
+        assert(!trophy_unlock_state(context,trophy_h,flags,&count) && count==1 && flags[0]==64);
+        assert(!trophy_unlock_state(other_context,trophy_h,flags,&count) && count==0);
+        unsigned char trophy_data[24]={0},game_data[32]={0};
+        uint64_t bytes=24; memcpy(trophy_data,&bytes,8);
+        assert(!trophy_info(context,trophy_h,6,NULL,trophy_data) && trophy_data[12]==1);
+        uint64_t timestamp=0; memcpy(&timestamp,trophy_data+16,8); assert(timestamp>UINT64_C(62135596800000000));
+        bytes=32; memcpy(game_data,&bytes,8);
+        assert(!trophy_game_info(context,trophy_h,NULL,game_data)); memcpy(&value,game_data+8,4); assert(value==1);
+        assert(!trophy_destroy_context(context) && trophy_unlock_state(context,trophy_h,flags,&count)==TROPHY_INVALID);
+        assert(!trophy_destroy_handle(trophy_h) && trophy_register(other_context,trophy_h,0)==TROPHY_INVALID);
+#ifdef _WIN32
+        assert(!_putenv_s("TLG_TROPHY_STATE","0"));
+#else
+        assert(!setenv("TLG_TROPHY_STATE","0",1));
+#endif
+        runtime_trophies_configure("CUSA03745",argv[1]);
+        assert(!trophy_unlock_state(1,1,flags,&count) && count==0); /* opt-out baseline */
+    }
 
     float ratio=0; assert(safe_area(&ratio)==0 && ratio==1.0f && safe_area(NULL)==SYSTEM_PARAMETER);
     puts("services test: ok");

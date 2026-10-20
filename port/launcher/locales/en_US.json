@@ -13,7 +13,7 @@
   "achievement_empty": "No unlocks recorded in this copy yet. Launch from here to record new trophy events.",
   "achievement_error": "Local progress could not be read: {error}",
   "achievement_folder": "Achievement data folder",
-  "achievement_help": "Existing trophy events only. Names/icons and old PSN progress are not imported; entries use trophy IDs. Custom challenges are deferred.",
+  "achievement_help": "Owner-supplied trophy metadata only. Hidden trophies stay masked until unlocked; missing metadata also stays masked. Save/PSN progress is not guessed or imported automatically.",
   "achievement_id": "Trophy",
   "achievement_missing": "Select your game folder first. No achievement files are created just by opening this page.",
   "achievement_notifications": "Windows achievement notifications (optional)",
@@ -125,5 +125,11 @@
   "vram": "Texture cache budget (MB of VRAM)",
   "vram_hint": "6 GB card: 5600 · 8 GB: 7000 · 12 GB: 10500 · 16 GB: 14000 · 24 GB: 21500. This is video card memory (VRAM), not RAM; never above your card's VRAM.",
   "vsync": "VSync",
-  "Windowed": "Windowed"
+  "Windowed": "Windowed",
+  "trophy_metadata": "Choose decrypted trophy XML folder…",
+  "metadata_needed": "Names and hidden flags need decrypted trophy XML. Unknown entries are safely masked.",
+  "hidden_trophy": "Hidden trophy",
+  "trophy_progress": "{count} / {total} trophies unlocked locally",
+  "trophy_locked": "Locked",
+  "trophy_unlocked": "Unlocked"
 }

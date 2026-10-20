@@ -14,6 +14,7 @@ import re
 import tempfile
 import threading
 import time
+import native_trophies
 
 from game_library import TITLE_IDS, game_info
 
@@ -65,7 +66,7 @@ class Store:
         self.title_id = title_id
         self.path = Path(user_dir) / 'achievements' / (title_id + '.json')
 
-    def read(self):
+    def _read_json(self):
         """Reading a page never creates folders or changes existing progress."""
         try:
             with self.path.open('rb') as source:
@@ -90,22 +91,44 @@ class Store:
                 if stamp.tzinfo is None:
                     raise ValueError('timestamp has no timezone')
             return state['unlocks']
-        except (ValueError, TypeError, UnicodeError) as error:
+        except (ValueError, TypeError, UnicodeError, RecursionError) as error:
             raise StoreError('Invalid local achievement file; left unchanged') from error
+
+    def read(self):
+        unlocks = self._read_json()
+        try:
+            native = native_trophies.read(self.path.parent.parent, self.title_id)
+        except ValueError as error:
+            raise StoreError(str(error)) from error
+        for key, record in native.items():
+            if (key not in unlocks or datetime.fromisoformat(record['unlocked_at'])
+                    < datetime.fromisoformat(unlocks[key]['unlocked_at'])):
+                unlocks[key] = record
+        return unlocks
 
     def unlock(self, trophy_id, now=None):
         if type(trophy_id) is not int or not 0 <= trophy_id < 128:
             raise StoreError('Invalid trophy ID')
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with locked(self.path.with_suffix('.lock')):
-            unlocks = self.read()
+            # The native backend persists BEFORE emitting the event. Only the
+            # JSON observer record deduplicates notifications; reading the native
+            # bit here as a duplicate would swallow every fresh notification.
+            unlocks = self._read_json()
             key = str(trophy_id)
             if key in unlocks:
                 return None
             stamp = now or datetime.now(timezone.utc)
             if stamp.tzinfo is None:
                 raise StoreError('Unlock timestamp must have a timezone')
-            record = {'unlocked_at': stamp.isoformat(timespec='seconds'), 'source': 'game_trophy'}
+            record = {'unlocked_at': stamp.astimezone(timezone.utc).isoformat(timespec='seconds'),
+                      'source': 'game_trophy'}
+            try:
+                native = native_trophies.read(self.path.parent.parent, self.title_id)
+            except ValueError as error:
+                raise StoreError(str(error)) from error
+            if key in native:
+                record = native[key]
             unlocks[key] = record
             state = {'schema': 1, 'title_id': self.title_id, 'unlocks': unlocks}
             temporary = None

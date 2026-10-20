@@ -1,6 +1,6 @@
 """Asset-free local trophy tests; never runs a game or sends OS notifications."""
 import ctypes
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from pathlib import Path
@@ -74,7 +74,7 @@ class AchievementTests(unittest.TestCase):
 
     def test_corrupt_progress_is_preserved(self):
         self.store.path.parent.mkdir(parents=True)
-        for raw in (b'invalid', b'{}', b'[]', b'x' * (a.MAX_STATE + 1),
+        for raw in (b'invalid', b'{}', b'[]', b'[' * 2000 + b']' * 2000, b'x' * (a.MAX_STATE + 1),
                     json.dumps({'schema': 1, 'title_id': 'CUSA03627', 'unlocks': {}}).encode(),
                     json.dumps({'schema': 1, 'title_id': 'CUSA03745',
                                 'unlocks': {'129': {'source': 'game_trophy', 'unlocked_at': STAMP.isoformat()}}}).encode()):
@@ -92,6 +92,10 @@ class AchievementTests(unittest.TestCase):
                 self.store.unlock(2)
         self.assertEqual(before, self.store.path.read_bytes())
         self.assertEqual(list(self.store.path.parent.glob('.unlock-*.tmp')), [])
+
+    def test_aware_timestamps_are_normalized_to_utc(self):
+        local = datetime(2026, 10, 20, 14, 0, tzinfo=timezone(timedelta(hours=2)))
+        self.assertEqual(self.store.unlock(1, now=local)['unlocked_at'], STAMP.isoformat(timespec='seconds'))
 
     def test_concurrent_writers_do_not_lose_progress(self):
         errors = []
@@ -200,6 +204,20 @@ class AchievementTests(unittest.TestCase):
         self.assertTrue(any('Log file unavailable' in line for line in received))
         self.assertTrue(any('synthetic disk failure' in line for line in received))
         process.wait.assert_called_once()
+
+    def test_log_write_and_close_failures_continue_draining(self):
+        process = Mock(stdout=io.StringIO('still running\n'))
+        process.wait.return_value = 0
+        broken = Mock()
+        broken.write.side_effect = OSError('synthetic full disk')
+        broken.close.side_effect = OSError('synthetic close failure')
+        received = []
+        settings = {**tlg_run.DEFAULT_SETTINGS, 'track_achievements': False}
+        with patch('builtins.open', return_value=broken):
+            self.assertEqual(tlg_run.copy_output(process, self.root / 'unused', settings,
+                                               received.append, notes=['preparing']), 0)
+        self.assertIn('still running\n', received)
+        self.assertTrue(any('Log write failed' in line for line in received))
 
 
 class NotificationTests(unittest.TestCase):

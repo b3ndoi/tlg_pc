@@ -6,7 +6,13 @@
   translation catalogs, retaining the original credits and 30-FPS defaults.
 - Record existing trophy events locally for newly launched GUI/headless
   sessions, with deduplication, atomic storage and optional Windows notifications.
-  No custom challenges, PSN synchronization, trophy artwork or retroactive import.
+  Add a responsive trophy grid with owner-supplied names/icons, hidden-entry
+  masking and bounded TRP/XML parsing. No game artwork or keys are bundled.
+- Add opt-in native persistent trophy flags/timestamps for the experimental
+  60-FPS tracking path, with deduplication, user/title isolation and atomic
+  state bridging. Default/30-FPS behavior and gameplay timing stay unchanged.
+- Audit offline save copies without guessing trophy unlocks from progress
+  counters. No custom challenges, PSN synchronization or automatic save import.
 - Test withdrawn widgets, persistence/error paths and frozen package resources
   without launching a game or sending real desktop notifications.
 - Fix speculative GPU readback deadlocks and queued-command ordering.

@@ -19,7 +19,7 @@ class ReleaseDefaults(unittest.TestCase):
     def test_60_environment_is_not_enabled_by_default(self):
         switches = {'TLG_TIMING_60', 'TLG_INPUT_TIMING_60', 'TLG_CLOCK_SYNC_60',
                     'TLG_CLIMB_DIAG', 'TLG_PRECISE_PACING', 'TLG_NATIVE_OUTPUT',
-                    'TLG_ENGINE_NATIVE_RESOLUTION'}
+                    'TLG_ENGINE_NATIVE_RESOLUTION', 'TLG_TROPHY_STATE'}
         self.assertTrue(switches.isdisjoint(tlg_run.DEFAULT_ENV))
         settings = dict(tlg_run.DEFAULT_SETTINGS)
         with patch.dict('os.environ', {}, clear=True), \
