@@ -5,7 +5,7 @@ do
     local owned, saved, sequence = false, nil, 0
     local function report(state)
         local f = io.open('/tlg-photo/status', 'w')
-        if f then f:write('1 '..sequence..' '..state..'\n'); f:close() end
+        if f then f:write('2 '..sequence..' '..state..'\n'); f:close() end
     end
     local function playing()
         -- Require an explicit false, not a missing command/property. Never
@@ -35,6 +35,7 @@ do
             old.photo.position = old.position
             old.photo.rotation = old.rotation
             old.photo.fov = old.fov
+            if old.mode ~= nil then old.photo.mode = old.mode end
         end
         end)
         -- Resume only a pause actually acquired here; never a pre-existing pause.
@@ -53,11 +54,14 @@ do
         local source, camera = world.activeCamera, FindObject('_default_camera')
         if not source or not camera or not valid_fov(camera.fov) or not valid_fov(source.fov) then return false end
         saved = {camera=source, photo=camera, position=Vector(camera.position),
-            rotation=Vector(camera.rotation):ToEuler(), fov=camera.fov,
+            rotation=Vector(camera.rotation):ToEuler(), fov=camera.fov, mode=camera.mode,
             stage=GameFlag.Stage, scene=GameFlag.Scene}
         owned = true
         luaCommand('trico pause')
         if TricoGame_IsGamePause() ~= true then return false end
+        -- The retail default camera can be in orbit/Maya mode. Its position then
+        -- denotes an orbit pivot, not a freely movable eye. Restore this on exit.
+        camera.mode = 'FPS'
         camera.position = Vector(source.worldPosition)
         camera.rotation = Vector(source.rotation):ToEuler()
         camera.fov = source.fov
@@ -72,7 +76,7 @@ do
         local line = f:read('*a'); f:close()
         local values = {}
         for v in line:gmatch('%S+') do values[#values+1] = tonumber(v) end
-        if #values ~= 10 or values[1] ~= 1 then restore(); report(2); return end
+        if #values ~= 11 or values[1] ~= 2 then restore(); report(2); return end
         sequence = values[2]
         if values[3] ~= 1 then restore(); report(0); return end
         if not saved then
@@ -82,18 +86,22 @@ do
             not TricoGame_IsGamePause() or FindObject('_world').activeCamera ~= saved.photo then
             restore(); report(2); return
         end
-        -- edt is the engine's unscaled/editor timestep, still advancing during
-        -- its native pause. Never divide by game speed or synthesize simulation dt.
-        if type(edt) ~= 'number' or edt ~= edt or edt <= 0 then report(1); return end
-        local step = math.min(edt, 0.05)
+        -- Retail may omit/zero the editor timestep while paused. The host passes
+        -- unscaled render time for camera-only movement; simulation stays paused.
+        local step = values[11]
+        if type(step) ~= 'number' or step ~= step or step <= 0 then step = edt end
+        if type(step) ~= 'number' or step ~= step or step <= 0 then step = 0 end
+        step = math.min(step, 0.05)
         local speed = values[10] == 1 and 12 or 3
         local camera = saved.photo
         local rotation = Vector(camera.rotation):ToEuler()
         rotation.X = math.max(-89, math.min(89, rotation.X + values[5]*0.12))
         rotation.Y = rotation.Y + values[4]*0.12
         camera.rotation = rotation
-        EntityMove(camera:GetName(), values[7]*speed*step, values[8]*speed*step,
-                   -values[6]*speed*step, 1)
+        if step > 0 then
+            EntityMove(camera:GetName(), values[7]*speed*step, values[8]*speed*step,
+                       -values[6]*speed*step, 1)
+        end
         camera.fov = math.max(15, math.min(100, camera.fov + values[9]*30*step))
         report(1)
     end

@@ -75,9 +75,10 @@ jobs:
         run: TLG_LTO=OFF TLG_PGO=off bash build.sh
       - name: Photo PNG and mailbox fixtures (no game)
         run: |
-          ninja -C out/gpu photo-png-test photo-runtime-test photo-mailbox-test
+          ninja -C out/gpu photo-png-test photo-runtime-test photo-mailbox-test photo-controls-test
           out/gpu/photo-runtime-test
           out/gpu/photo-mailbox-test
+          out/gpu/photo-controls-test
           out/gpu/photo-png-test "$(mktemp -d)"
       - name: Package
         run: bash packaging/linux/package.sh
@@ -149,9 +150,10 @@ jobs:
         run: |
           export MSYS2_ROOT=$(cygpath -u "$MSYS2_ROOT")
           source ./msys2-env.sh
-          ninja -C out/gpu photo-png-test photo-runtime-test photo-mailbox-test
+          ninja -C out/gpu photo-png-test photo-runtime-test photo-mailbox-test photo-controls-test
           out/gpu/photo-runtime-test.exe
           out/gpu/photo-mailbox-test.exe
+          out/gpu/photo-controls-test.exe
           out/gpu/photo-png-test.exe "$(cygpath -w "$(mktemp -d)")"
       - name: Frozen launcher smoke test (no game or notifications)
         timeout-minutes: 2

@@ -31,6 +31,7 @@ void runtime_photo_capture() {}
 int runtime_photo_take_capture() { return 0; }
 void runtime_photo_motion(float,float) {}
 void runtime_photo_axes(float,float,float,float,int) {}
+void runtime_photo_step(float) {}
 const char* runtime_file_user_dir() { std::abort(); }
 uint64_t runtime_process_time_counter() { return runtime_process_time_us() * 1000; }
 int32_t* runtime_errno() { std::abort(); }

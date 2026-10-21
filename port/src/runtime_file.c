@@ -209,13 +209,29 @@ static int game_path(const char *p) {
 }
 /* All operations return >=0 or -(host errno); wrappers adapt the convention. */
 static void log_io_problem(const char *what,const char *detail,int64_t n,int error);
+static int photo_kind(const char *guest) {
+    if (!guest) return 0;
+    return !strcmp(guest,"/tlg-photo/control") ? 1 : !strcmp(guest,"/tlg-photo/status") ? 2 : 0;
+}
+static int64_t photo_stat(int kind,GuestStat *out) {
+    if (!runtime_photo_enabled()) return -ENOENT;
+    if (!out) return -EFAULT;
+    char control[256];
+    memset(out,0,sizeof(*out)); out->nlink=1; out->blksize=256;
+    out->mode=kind==1 ? 0100400 : 0100200;
+    /* Retail stdio checks path metadata before opening. This must not consume
+     * look deltas; only opening a control snapshot consumes them. */
+    if (kind==1) out->size=(int64_t)runtime_photo_peek_control(control,sizeof(control));
+    return 0;
+}
 static int64_t do_open(const char *guest,int flags,int mode) {
     /* An opt-in in-memory mailbox for the Lua-thread photo backend. It cannot
      * create/overwrite a real file and never traverses the mount table. */
-    if (guest && (!strcmp(guest,"/tlg-photo/control") || !strcmp(guest,"/tlg-photo/status"))) {
+    int kind=photo_kind(guest);
+    if (kind) {
         if (!runtime_photo_enabled()) return -ENOENT;
-        int kind=!strcmp(guest,"/tlg-photo/control") ? 1 : 2;
-        if ((kind==1 && (flags&3)) || (kind==2 && (flags&3)!=1)) return -EACCES;
+        if ((flags&0x20000) || (kind==1 && (flags&(3|0x8|0x200|0x400|0x800))) ||
+            (kind==2 && (flags&3)!=1)) return -EACCES;
         pthread_mutex_lock(&lock);
         int fd=-1;
         for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
@@ -425,6 +441,17 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
     return n;
 }
 static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
+    File *photo=get(fd);
+    if (photo && photo->photo) {
+        if (photo->photo!=1) return -EBADF;
+        if (offset<0) return -EINVAL;
+        if (!buffer && size) return -EFAULT;
+        pthread_mutex_lock(&photo->io);
+        size_t available=(uint64_t)offset<photo->photo_size ? photo->photo_size-(size_t)offset : 0;
+        size_t n=size<available ? (size_t)size : available;
+        if (n) memcpy(buffer,photo->photo_data+(size_t)offset,n);
+        pthread_mutex_unlock(&photo->io); return (int64_t)n;
+    }
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     ssize_t n=full_io(h,buffer,size,offset);
@@ -457,11 +484,12 @@ static int64_t do_write(int fd,const void *buffer,uint64_t size) {
         if (photo->photo!=2) return -EBADF;
         if (!buffer && size) return -EFAULT;
         pthread_mutex_lock(&photo->io);
-        if (size>sizeof(photo->photo_data)-photo->photo_size) {
+        if (size>sizeof(photo->photo_data)-photo->position) {
             pthread_mutex_unlock(&photo->io); return -EFBIG;
         }
-        if (size) memcpy(photo->photo_data+photo->photo_size,buffer,(size_t)size);
-        photo->photo_size+=(size_t)size;
+        if (size) memcpy(photo->photo_data+photo->position,buffer,(size_t)size);
+        photo->position+=(size_t)size;
+        if (photo->position>photo->photo_size) photo->photo_size=photo->position;
         pthread_mutex_unlock(&photo->io); return (int64_t)size;
     }
     int h=host_fd(fd);
@@ -510,7 +538,17 @@ static int64_t do_pwrite(int fd,const void *buffer,uint64_t size,int64_t offset)
 static int64_t do_lseek(int fd,int64_t offset,int whence) {
     File *f=get(fd);
     if (!f) return -EBADF;
-    if (f->photo) return -ESPIPE;
+    if (f->photo) {
+        if (whence<0 || whence>2) return -EINVAL;
+        pthread_mutex_lock(&f->io);
+        int64_t base=whence==1 ? (int64_t)f->position : whence==2 ? (int64_t)f->photo_size : 0;
+        /* Bound before adding, including INT64_MIN/MAX: no overflow or sparse writes. */
+        if (offset < -base || offset > (int64_t)f->photo_size-base) {
+            pthread_mutex_unlock(&f->io); return -EINVAL;
+        }
+        f->position=(size_t)(base+offset);
+        pthread_mutex_unlock(&f->io); return (int64_t)f->position;
+    }
     if (whence<0 || whence>2) return -EINVAL;
     if (f->dir) {
         /* Directory offsets are entry indices for getdirentries. */
@@ -541,7 +579,7 @@ static int64_t do_fstat(int fd,GuestStat *out) {
     File *photo=get(fd);
     if (photo && photo->photo) {
         if (!out) return -EFAULT;
-        memset(out,0,sizeof(*out)); out->mode=0100600; out->nlink=1;
+        memset(out,0,sizeof(*out)); out->mode=photo->photo==1 ? 0100400 : 0100200; out->nlink=1;
         out->size=(int64_t)photo->photo_size; out->blksize=256;
         return 0;
     }
@@ -563,6 +601,8 @@ static int64_t do_fstat(int fd,GuestStat *out) {
     convert_stat(&s,out); return 0;
 }
 static int64_t do_stat(const char *guest,GuestStat *out) {
+    int kind=photo_kind(guest);
+    if (kind) return photo_stat(kind,out);
     char path[1024]; HostStat s;
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -660,6 +700,13 @@ static int64_t do_truncate(const char *guest,int64_t length) {
 }
 static int64_t do_fsync(int fd) { int h=host_fd(fd); if (h<0) return -EBADF; return fsync(h) ? -errno : 0; }
 static int64_t do_access(const char *guest,int mode) {
+    int kind=photo_kind(guest);
+    if (kind) {
+        if (!runtime_photo_enabled()) return -ENOENT;
+        if (mode&~7) return -EINVAL;
+        if ((mode&1) || (kind==1 && (mode&2)) || (kind==2 && (mode&4))) return -EACCES;
+        return 0;
+    }
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;

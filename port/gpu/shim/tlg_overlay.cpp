@@ -1751,7 +1751,10 @@ bool Visible() {
 }
 
 bool CapturesInput() {
-    return runtime_photo_captures_input() || menu_open || text_entry_active || choice_active || message_active;
+    return runtime_photo_captures_input() || CapturesOtherInput();
+}
+bool CapturesOtherInput() {
+    return menu_open || text_entry_active || choice_active || message_active;
 }
 
 void BeginSaveList(int kind, std::vector<SaveRow> rows, std::vector<TlgPng::Image> pictures, int focus) {

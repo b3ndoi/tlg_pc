@@ -17,6 +17,9 @@ void runtime_photo_cancel(void);
 void runtime_photo_motion(float x, float y);
 void runtime_photo_axes(float forward, float right, float up, float zoom, int fast);
 size_t runtime_photo_control(char *output, size_t capacity);
+size_t runtime_photo_peek_control(char *output, size_t capacity);
+/* Unscaled render-thread time, independent of the paused game/editor clock. */
+void runtime_photo_step(float seconds);
 void runtime_photo_status(const char *data, size_t size);
 void runtime_photo_capture(void);
 int runtime_photo_take_capture(void);

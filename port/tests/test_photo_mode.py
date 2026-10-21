@@ -22,7 +22,7 @@ PORT=Path(__file__).resolve().parents[1]
 SOURCE=(PORT/'src/photo_mode.lua').read_text(encoding='utf-8')
 MOCK='''
 seq=1;want=0;ack='';paused=false;anime=false;inGame=true;cameraKey='game'
-pauses=0;resumes=0;moves=0;elapsed=1/60;simulationSteps=0
+pauses=0;resumes=0;moves=0;elapsed=1/60;simulationSteps=0;editorStep=true;hostStep=nil
 GameFlag={Stage='stage-a',Scene='scene-a'}
 function Vector(value)
     local t={X=value.X or 0,Y=value.Y or 0,Z=value.Z or 0}
@@ -31,7 +31,7 @@ function Vector(value)
 end
 function camera(name,x)
     return {name=name,position=Vector({X=x}),rotation=Vector({Y=10}),
-        worldPosition=Vector({X=x}),fov=60,GetName=function(self) return self.name end}
+        worldPosition=Vector({X=x}),fov=60,mode='Maya',GetName=function(self) return self.name end}
 end
 game=camera('game_camera',12);photo=camera('_default_camera',100)
 world={activeCamera=game};player={}
@@ -61,6 +61,7 @@ function luaCommand(command)
 end
 function EntityMove(name,x,y,z,relative)
     assert(name=='_default_camera' and relative==1)
+    assert(photo.mode=='FPS')
     moves=moves+1;photo.position.X=photo.position.X+x
     photo.position.Y=photo.position.Y+y;photo.position.Z=photo.position.Z+z
 end
@@ -68,7 +69,7 @@ dx=0;dy=0;forward=0;right=0;up=0;zoom=0;fast=0
 io={open=function(path,mode)
     if path=='/tlg-photo/control' then
         assert(mode=='r')
-        return {read=function() return '1 '..seq..' '..want..' '..dx..' '..dy..' '..forward..' '..right..' '..up..' '..zoom..' '..fast end,
+        return {read=function() return '2 '..seq..' '..want..' '..dx..' '..dy..' '..forward..' '..right..' '..up..' '..zoom..' '..fast..' '..(hostStep or elapsed) end,
             close=function() end}
     end
     assert(path=='/tlg-photo/status' and mode=='w')
@@ -77,7 +78,7 @@ end}
 function RegisterTick(f) tick=f end
 function frame()
     if not paused then simulationSteps=simulationSteps+1 end
-    tick(paused and 0 or elapsed,elapsed)
+    tick(paused and 0 or elapsed,editorStep and elapsed or nil)
 end
 '''
 
@@ -100,6 +101,18 @@ class PhotoLua(unittest.TestCase):
         vm.execute('seq=2;want=0;frame()')
         self.assertTrue(vm.eval('not paused and world.activeCamera==game and pauses==1 and resumes==1'))
         self.assertTrue(vm.eval('photo.position.X==100 and photo.fov==60 and photo.rotation.Y==10'))
+        self.assertEqual(vm.eval('photo.mode'),'Maya')
+
+    def test_camera_moves_without_editor_timestep(self):
+        vm=self.vm();vm.execute('editorStep=false;want=1;frame();forward=1;dx=10;for i=1,60 do frame() end')
+        self.assertTrue(vm.eval('paused and photo.mode=="FPS" and photo.rotation.Y>10'))
+        self.assertAlmostEqual(vm.eval('photo.position.Z'),-3.0,places=8)
+        vm.execute('want=0;frame()')
+        self.assertTrue(vm.eval('not paused and photo.mode=="Maya" and world.activeCamera==game'))
+
+    def test_mouse_look_does_not_depend_on_translation_step(self):
+        vm=self.vm();vm.execute('want=1;frame();hostStep=0;elapsed=0;editorStep=false;dx=10;frame()')
+        self.assertTrue(vm.eval('paused and photo.rotation.Y>10'))
 
     def test_cutscene_menu_unknown_state_and_existing_pause_refused(self):
         for setup in ('anime=true','anime=nil','inGame=false','paused=true','player=nil',

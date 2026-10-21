@@ -22,7 +22,7 @@ bool HandleEvent(const SDL_Event& e,bool other_ui) {
             if (!active) TlgOverlay::Notice("Photo mode requested (gameplay only). F8/Esc exits; F9 saves 1440p PNG.",4);
             return true;
         }
-        if (active && (e.key.key==SDLK_ESCAPE || e.key.key==SDLK_INSERT)) {
+        if (runtime_photo_captures_input() && (e.key.key==SDLK_ESCAPE || e.key.key==SDLK_INSERT)) {
             runtime_photo_cancel(); return true;
         }
         if (active && e.key.key==SDLK_F9) { runtime_photo_capture(); return true; }
@@ -48,10 +48,12 @@ bool HandleEvent(const SDL_Event& e,bool other_ui) {
 }
 void Poll() {
     if (!runtime_photo_enabled()) return;
+    if (TlgOverlay::CapturesOtherInput()) runtime_photo_cancel();
     static uint64_t previous=0;
     const uint64_t now=SDL_GetTicksNS();
     const float step=previous ? std::min(float(now-previous)/1e9f,0.05f) : 0;
     previous=now;
+    runtime_photo_step(step);
     if (!runtime_photo_active()) {
         // A held photo movement key/stick must not become a gameplay movement
         // on resume (e.g. walking the boy off a ledge). Clear only at neutral.

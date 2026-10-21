@@ -202,8 +202,8 @@ bool WindowSDL::HandleMouse(const SDL_Event& event) {
 }
 
 void WindowSDL::UpdateMouseCapture() {
-    const bool want = TlgSettings::Get().mouse_enabled && focused && !mouse_released &&
-                      (!TlgOverlay::CapturesInput() || runtime_photo_active());
+    const bool want = focused && (runtime_photo_active() ||
+                      (TlgSettings::Get().mouse_enabled && !mouse_released && !TlgOverlay::CapturesInput()));
     if (want == mouse_captured) {
         return;
     }
@@ -401,7 +401,7 @@ bool WindowSDL::PollEvents() {
             UpdateTextTitle();
             continue;
         }
-        if (TlgPhoto::HandleEvent(event,TlgOverlay::CapturesInput()) || TlgOverlay::HandleEvent(event) || HandleMouse(event)) {
+        if (TlgPhoto::HandleEvent(event,TlgOverlay::CapturesOtherInput()) || TlgOverlay::HandleEvent(event) || HandleMouse(event)) {
             continue;
         }
         switch (event.type) {

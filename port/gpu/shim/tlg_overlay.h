@@ -44,6 +44,8 @@ void Notice(const std::string& text, float seconds);
 
 /// The menu is open or a text entry is shown: the game's input is held neutral.
 bool CapturesInput();
+/// Actual menu/dialog capture, excluding photo mode's own pending/release gate.
+bool CapturesOtherInput();
 
 /// Window thread: the game's text dialog (sceImeDialog). Shown as a box on screen until
 /// `active` is false; typing goes to the window (sdl_window), the box only displays it.

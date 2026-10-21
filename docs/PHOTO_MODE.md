@@ -25,8 +25,11 @@ or modified bootstrap is left unchanged.
 - Escape, opening the port menu, focus loss or minimization: request restoration.
 - Controller: L3+R3 requests entry/exit; left stick moves; right stick looks;
   shoulders move vertically; right trigger increases speed; B/Circle exits;
-  Y/Triangle captures. The port's overlay and gameplay inputs are suppressed
-  only after the engine acknowledges entry.
+  Y/Triangle captures. The port's overlay is hidden after acknowledged entry.
+  Gameplay input is neutral while entry is pending as well, preventing the
+  activation chord from reaching the game's own camera/debug controls. An
+  unacknowledged entry request is cancelled after one second of render time;
+  this never ends the game or imposes a session timer.
 
 After exit, gameplay input remains neutral until held keys/buttons/sticks are
 released, so a photo movement key does not unexpectedly move the boy on resume.
@@ -50,11 +53,23 @@ files and no writes to game archives, clocks, characters, AI or saves.
 
 Freeze/resume uses the existing `trico pause` / `trico resume` commands, never a
 zero game speed, suspended OS threads or blocked Vulkan submissions. Only a
-pause acquired by photo mode is released. Camera movement uses the unscaled
-editor timestep and restores the unused camera's previous state on exit. A
+pause acquired by photo mode is released. Camera movement uses unscaled render
+time (with an editor-timestep fallback), never paused simulation time. Mouse
+look does not depend on either timestep. The default camera is temporarily put
+in FPS mode rather than retaining an orbit/Maya pivot, and its transform, FOV
+and mode are restored on exit. A
 cutscene/scene change cancels the mode; it does not overwrite a camera installed
 by a cutscene. Missing services or Lua errors refuse entry / attempt restoration.
 The original gameplay camera transform is not edited.
+
+The first local native test exposed repeated `no mount for guest path
+/tlg-photo/control` messages: retail stdio probes metadata/reachability before
+opening the mailbox. The descriptor-only fixture had not exercised this path.
+The virtual namespace now handles stat/access/reachability and bounded snapshot
+seek/pread in memory as well as open/read/write/close. Metadata does not consume
+mouse deltas. Disabled photo paths fail without touching a host mount or file.
+The corrected build still needs a fresh native entry/movement/exit/capture test;
+passing these regressions is not a claim that the in-game lock is resolved.
 
 The existing 60-FPS timing transforms stay independently gated; enabling photo
 mode alone does not implicitly turn them on. When photo mode is off there is no
@@ -70,7 +85,12 @@ photo Lua insertion, pause command, camera change or image allocation. The
 - `photo-runtime-test` exercises acknowledgement ordering, stale replies,
   finite/clamped input, cancellation and coalesced captures.
 - `photo-mailbox-test` exercises the actual guest file-descriptor path, split
-  reads/writes, access modes, bounded messages and opt-out, without any host files.
+  reads/writes, retail path preflight, access modes, seek/pread, bounded messages
+  and opt-out, without any host files.
+- `photo-controls-test` drives real SDL event handlers with synthetic events,
+  without initializing SDL, opening a window or reading any controller. It
+  checks pending chord shielding, Escape cancellation, look/capture dispatch,
+  dialog/focus cancellation and opt-out.
 - `photo-png-test TEMP_DIRECTORY` encodes and independently decodes a synthetic
   2560x1440 image, verifies exact pixels, Unicode paths and refusal to overwrite.
 - Existing release regressions must pass on Windows and Linux.
