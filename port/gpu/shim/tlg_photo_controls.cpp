@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tlg_photo_controls.h"
 #include "../../src/runtime_photo.h"
-#include "tlg_overlay.h"
+#include "tlg_overlay_input.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cmath>

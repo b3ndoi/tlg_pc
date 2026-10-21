@@ -9,6 +9,7 @@
 #include <vector>
 #include "common/types.h"
 #include "tlg_png.h"
+#include "tlg_overlay_input.h"
 #include "video_core/renderer_vulkan/vk_common.h"
 
 union SDL_Event;
