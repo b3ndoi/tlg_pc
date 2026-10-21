@@ -36,9 +36,10 @@ def source_for(suffix, changed=True):
 
 def lua_vm():
     vm = LuaRuntime(unpack_returned_tuples=True)
-    vm.execute('''_test_dt=0; function GetGameDeltaTime() return _test_dt end
+    vm.execute('''_test_dt=0
         Ai2={Condor={Scripts={}},CommonScript={Condor={}},Utils={},Move={Condor={CalcMoveCost={}}}}
-        MS={}; MSExt={SM_Callbacks={}}
+        MS={}; function MS.GetGameDeltaTime() return _test_dt end
+        MSExt={SM_Callbacks={}}
     ''')
     return vm
 
@@ -55,6 +56,26 @@ def finite_schedule(fps, seconds):
 
 @unittest.skipUnless(ARGS and LuaRuntime, 'optional offline EU assets and Lua 5.1 fixture required')
 class ScriptTiming(unittest.TestCase):
+    def test_00_retail_ms_clock_precedence_pause_and_missing_clock(self):
+        vm=lua_vm()
+        self.assertEqual(vm.eval('type(GetGameDeltaTime)'), 'nil')
+        clock=vm.execute(patches.PREFIX.decode()+'''return function(dt)
+            return _tlg60_dt(dt),_tlg60_ticks(dt)
+        end''')
+        vm.globals()._test_dt=1/60
+        seconds,ticks=clock(None)
+        self.assertAlmostEqual(seconds,1/60)
+        self.assertAlmostEqual(ticks,0.5)
+        vm.execute('function GetGameDeltaTime() return 999 end')
+        self.assertAlmostEqual(clock(None)[0],1/60) # module clock wins
+        self.assertAlmostEqual(clock(1/45)[0],1/45) # explicit update dt wins
+        for invalid in [0,-1,float('nan'),float('inf')]:
+            self.assertEqual(clock(invalid),(0,0)) # never override explicit pause
+        vm.execute('MS.GetGameDeltaTime=nil; function GetGameDeltaTime() return 0.02 end')
+        self.assertEqual(clock(None),(0.02,0.6)) # supported legacy environment
+        vm.execute('GetGameDeltaTime=nil')
+        self.assertEqual(clock(None),(0,0))
+
     def test_01_source_guards_and_exact_edits(self):
         for name, source in ORIGINAL.items():
             self.assertRaises(ValueError, patches.plan, name, b'X'+source[1:])
@@ -177,6 +198,56 @@ class ScriptTiming(unittest.TestCase):
                 for i in range(fps):
                     if tick(1/fps)<=0: break
                 self.assertAlmostEqual((i+1)/fps,initial/30)
+
+    def test_05b_tree_tail_uses_native_success_gate_and_retail_elapsed_clock(self):
+        original=source_for('s09_fallingbridge2/missionscript.lua',False)
+        changed=source_for('s09_fallingbridge2/missionscript.lua')
+        gate="if MS.BoyCompareAnimationState('B_P_FB2_reach_success_loop') then"
+        self.assertIn(gate,original)
+        self.assertIn(gate,changed)
+        self.assertNotIn('_tlg60_tail_rescue',changed)
+        self.assertNotIn('_tlg60_tail_reach_seen',changed)
+        start=changed.index(gate)
+        finish=changed.index('\n\t\t\t--',changed.index('state.DetachPlayerBrancFlag = 1',start))
+        block=changed[start:finish]
+        for schedule in [finite_schedule(fps,1.2) for fps in [30,45,60,120]]+[[1/45,1/60,0.025]*24]:
+            vm=lua_vm()
+            tick=vm.execute(patches.PREFIX.decode()+'''
+                local state={reach_success_loop=0,DetachPlayerBrancFlag=0,
+                    BoyHangTailCamFlag=1,tailFlag=1}
+                local success=false
+                local calls=0
+                function MS.BoyCompareAnimationState(name)
+                    return name=='B_P_FB2_reach_success_loop' and success
+                end
+                function DetachPlayerBranch() calls=calls+1 end
+                function MS.BoyMissionCommand() end
+                function MS.PutSound3D() end
+                function MS.SetDisableVolume() end
+                function MS.SetDisableSpPathEdge() end
+                return function(dt,s)
+                    _test_dt=dt; success=s
+            '''+block+'''
+                    return state.reach_success_loop,calls,state.DetachPlayerBrancFlag
+                end
+            ''')
+            # Reach/swing flags without the success animation never release.
+            for dt in schedule:
+                self.assertEqual(tick(dt,False),(0,0,0))
+            elapsed=0
+            for dt in schedule:
+                elapsed+=dt
+                age,calls,released=tick(dt,True)
+                self.assertAlmostEqual(age,elapsed)
+                if calls:
+                    self.assertGreaterEqual(elapsed,0.5-1e-8)
+                    self.assertLessEqual(elapsed,0.5+max(schedule)+1e-8)
+                    self.assertEqual(released,1)
+                    break
+            else:
+                self.fail('retail MS clock never completed the native handoff')
+            self.assertEqual(tick(0,True)[1],1) # paused frame cannot issue twice
+            self.assertEqual(tick(1/60,False)[0],0) # native reset remains
 
     def test_06_actual_mirror_controller_elapsed_rate(self):
         for changed in [False,True]:
