@@ -1,7 +1,9 @@
 """Asset-free release safeguards; never launches a game or edits user settings."""
+import os
 from pathlib import Path
 import struct
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -37,6 +39,21 @@ class ReleaseDefaults(unittest.TestCase):
     def test_timeout_is_not_added(self):
         import inspect
         self.assertEqual(inspect.signature(tlg_run.launch).parameters['seconds'].default, 0)
+
+    def test_windows_source_launcher_finds_msys2_runtime_dlls(self):
+        settings = dict(tlg_run.DEFAULT_SETTINGS)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            clang64 = root / 'msys64' / 'clang64' / 'bin'
+            clang64.mkdir(parents=True)
+            probe = root / 'out' / 'tlg-probe.exe'
+            with patch.dict(os.environ, {'MSYS2_ROOT': str(root / 'msys64')}, clear=True), \
+                 patch.object(tlg_run, 'PROBE', probe), \
+                 patch.object(tlg_run.os, 'name', 'nt'), \
+                 patch.object(tlg_run, 'window_icon', return_value=None), \
+                 patch.object(tlg_run, 'ngs2_module', return_value=None):
+                env = tlg_run.build_env(settings)
+            self.assertEqual(env['PATH'].split(os.pathsep)[0], str(clang64))
 
     def test_native_resolution_options_are_explicit_and_1440p_stays_default(self):
         self.assertEqual(native_resolution.DEFAULT_RESOLUTION, '2560x1440')

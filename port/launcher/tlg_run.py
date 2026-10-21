@@ -486,6 +486,12 @@ def build_env(settings, extra=None):
     bundled = OUT_DIR / 'lib'
     if os.name != 'nt' and bundled.is_dir():
         env['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, [str(bundled), os.environ.get('LD_LIBRARY_PATH')]))
+    # Source-tree Windows builds keep their runtime DLLs in MSYS2's CLANG64 bin directory.
+    # Packaged builds ship those DLLs beside tlg-probe.exe and do not need this fallback.
+    if os.name == 'nt' and not (PROBE.parent / 'SDL3.dll').is_file():
+        clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+        if clang64.is_dir():
+            env['PATH'] = os.pathsep.join(filter(None, [str(clang64), env.get('PATH')]))
     # Shaders and pipelines beside the saves (the GPU reads it when it starts; before, Linux used
     # shadPS4's ~/.local/share/shadPS4 and Windows <saves>/user).
     env['TLG_GPU_USER_DIR'] = str(gpu_user_dir())
