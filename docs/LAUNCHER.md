@@ -10,10 +10,11 @@ not install it into any existing game/test copy.
 
 - **Play:** local game/module folders, voice/text language, interface language
   and audio. The header detects a supported title ID and metadata revision.
-- **Video:** display mode, VSync, FPS overlay, frame-rate selection, 720p,
-  1080p, 1440p/2K and 2160p/4K host output choices, renderer budget and image
-  filters. The output selector is separate from the guarded EU engine-native
-  profile, and the ordinary 60-FPS selector does not activate that profile.
+- **Video:** display mode, VSync, FPS overlay, frame-rate selection, renderer
+  budget and image filters. 1080p keeps the untouched baseline; 720p,
+  1440p/2K and 2160p/4K are guarded exact-EU engine-native modes. Preparation
+  writes the selected engine mode and launch supplies the matching renderer
+  handshake, bypassing the older host scene-proxy path.
 - **Controls:** existing mouse options and keyboard/controller remapping.
 - **Achievements:** responsive, scrollable trophy cards, local unlock records,
   owner-supplied metadata and notification preferences.

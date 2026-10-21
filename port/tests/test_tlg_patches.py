@@ -133,6 +133,19 @@ class FrameRatePatchTests(unittest.TestCase):
         applied, lines, blob = self.prepare(b'', '30')
         self.assertEqual((applied, struct.unpack_from('<8sQQ', blob)), ('30', (b'G3PATCH2', 0, 0)))
 
+    def test_native_engine_resolution_is_appended_to_the_selected_fps_profile(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(t, 'read_eboot_elf', return_value=b'exact fixture'), \
+             patch('tlg_native_resolution.checked_writes', return_value=[(0x1234, b'\x00\x05\xd0\x02')]):
+            Path(tmp, 'eboot.bin').write_bytes(b'')
+            applied, lines = t.prepare(tmp, tmp, '30', native_resolution='1280x720')
+            blob = Path(tmp, 'patches.bin').read_bytes()
+        self.assertEqual(applied, '30')
+        self.assertIn('Native engine resolution: verified 1280x720; host scene proxies disabled', lines)
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 1))
+        self.assertEqual(struct.unpack_from('<QQ', blob, 24), (0x1234, 4))
+        self.assertEqual(blob[40:], b'\x00\x05\xd0\x02')
+
 
 class ModTitleIdTests(unittest.TestCase):
     EU_XML = """<?xml version="1.0"?>

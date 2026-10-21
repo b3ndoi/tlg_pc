@@ -55,6 +55,18 @@ class ReleaseDefaults(unittest.TestCase):
                 env = tlg_run.build_env(settings)
             self.assertEqual(env['PATH'].split(os.pathsep)[0], str(clang64))
 
+    def test_prepared_native_engine_mode_disables_host_proxy_path(self):
+        settings = {**tlg_run.DEFAULT_SETTINGS, 'scene_resolution': '1280x720'}
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(tlg_run, 'applied_engine_resolution', '1280x720'), \
+             patch.object(tlg_run, 'window_icon', return_value=None), \
+             patch.object(tlg_run, 'ngs2_module', return_value=None):
+            env = tlg_run.build_env(settings)
+        self.assertEqual(env['TLG_ENGINE_NATIVE_RESOLUTION'], '1280x720')
+        self.assertEqual(env['TLG_OUTPUT_RES'], '1280x720')
+        self.assertEqual(env['TLG_NATIVE_OUTPUT'], '0')
+        self.assertEqual(env['TLG_UPSCALER'], 'none')
+
     def test_native_resolution_options_are_explicit_and_1440p_stays_default(self):
         self.assertEqual(native_resolution.DEFAULT_RESOLUTION, '2560x1440')
         self.assertEqual(native_resolution.normalize_resolution('720p'), '1280x720')

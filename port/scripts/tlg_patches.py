@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The Last Guardian frame rate patches (TLG_FPS=30|60|unlocked) and community mods/cheats,
-written together to out/patches.bin.
+"""The Last Guardian frame rate patches (TLG_FPS=30|60|unlocked), guarded native-resolution
+mode and community mods/cheats, written together to out/patches.bin.
 
 Each built-in frame rate patch is a list of {image offset, expected bytes, new bytes} for a supported eboot build
 (hashes below, or a SELF dump of US 1.03): the expected bytes are checked before anything is
@@ -182,8 +182,9 @@ def compile_mods(game_dir, eboot, mods_dir, mods_config, lines):
         return []
 
 
-def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
-    """Writes out/patches.bin for the mode plus any enabled mod; returns (applied mode, lines).
+def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, native_resolution=None):
+    """Writes out/patches.bin for the mode, native resolution and enabled mods; returns
+    (applied mode, lines).
     Any problem with the frame rate patches (other eboot build, unexpected bytes) falls back to
     30 FPS without them; a mod problem only drops that mod, never the frame rate patches."""
     mode = normalize_mode(mode)
@@ -241,6 +242,20 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
         for _, data, what in mod_writes:
             lines.append(f'Mod {what} ({data.hex()})')
     writes = fps_writes + mod_writes
+    if native_resolution:
+        import tlg_native_resolution as native
+        resolution = native.normalize_resolution(native_resolution)
+        native_elf = read_eboot_elf(game_dir)
+        if not native_elf:
+            raise ValueError('Native engine resolution: could not read the owner-supplied eboot ELF')
+        resolution_writes = native.checked_writes(native_elf, resolution=resolution)
+        for address, data in resolution_writes:
+            if any(address < old + len(previous) and old < address + len(data)
+                   for old, previous, _ in writes):
+                raise ValueError('Native engine resolution: overlapping frame-rate/mod patch')
+            writes.append((address, data, f'native engine resolution {resolution}'))
+        width, height = native.RESOLUTIONS[resolution]
+        lines.append(f'Native engine resolution: verified {width}x{height}; host scene proxies disabled')
     write_patch_file(Path(out_dir) / 'patches.bin', writes)
     lines.append(f'Frame rate: {mode} FPS mode, {len(writes)} patch writes')
     return mode, lines
@@ -253,8 +268,9 @@ def main():
     p.add_argument('--mode', default='30', help='30, 60 or unlocked')
     p.add_argument('--mods-dir', help='folder of shadPS4/GoldHEN cheat XML files')
     p.add_argument('--mods-config', help='mods.json: {"enabled": [...], "disabled": [...]}')
+    p.add_argument('--native-resolution', help='guarded EU 01.00 engine mode: 720p, 1440p/2k or 2160p/4k')
     a = p.parse_args()
-    _, lines = prepare(a.game_dir, a.out, a.mode, a.mods_dir, a.mods_config)
+    _, lines = prepare(a.game_dir, a.out, a.mode, a.mods_dir, a.mods_config, a.native_resolution)
     print('\n'.join(lines))
 
 

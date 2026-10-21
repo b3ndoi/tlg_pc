@@ -90,7 +90,7 @@ DEFAULT_SETTINGS = {
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
-    # Host output/UI size. This is separate from the guarded EU engine-native developer profile.
+    # 1080p is the untouched baseline. The other choices are guarded EU engine-native modes.
     'scene_resolution': '1920x1080',
     'track_achievements': True,    # observes existing trophy events only; never patches game logic
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
@@ -101,8 +101,11 @@ DEFAULT_SETTINGS = {
 }
 FRAME_RATES = ['30', '60', 'unlocked']
 SCENE_RESOLUTIONS = ['1280x720', '1920x1080', '2560x1440', '3840x2160']
+ENGINE_NATIVE_RESOLUTIONS = {'1280x720', '2560x1440', '3840x2160'}
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
 applied_frame_rate = '30'
+# The guarded engine mode prepare() really wrote; None keeps the baseline/host path.
+applied_engine_resolution = None
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -335,21 +338,30 @@ def set_mod_enabled(key, enabled):
 
 
 def prepare(settings, log=print):
-    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches and
-    any enabled mod); returns the module list that was linked."""
-    global applied_frame_rate
+    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame-rate/native-mode
+    patches and enabled mods); returns the module list that was linked."""
+    global applied_frame_rate, applied_engine_resolution
+    applied_frame_rate = '30'
+    applied_engine_resolution = None
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
     ngs2 = ngs2_module(settings)
     if ngs2:
         modules.append(str(ngs2))
+    requested_resolution = settings.get('scene_resolution', '1920x1080')
+    native_resolution = (requested_resolution if requested_resolution in ENGINE_NATIVE_RESOLUTIONS
+                         else None)
+    patch_step = [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR),
+                  '--mode', frame_rate(settings), '--mods-dir', str(mods_dir()),
+                  '--mods-config', str(mods_config())]
+    if native_resolution:
+        patch_step += ['--native-resolution', native_resolution]
     steps = [
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
-        [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings),
-         '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
+        patch_step,
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -361,6 +373,7 @@ def prepare(settings, log=print):
             log(line)
             if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
                 applied_frame_rate = line.split()[2]
+    applied_engine_resolution = native_resolution
     isa_table(log)
     return modules
 
@@ -480,6 +493,13 @@ def build_env(settings, extra=None):
     env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
     if applied_frame_rate == 'unlocked':
         env.setdefault('TLG_VBLANK_HZ', '0')
+    if applied_engine_resolution:
+        # The exact EU engine mode and the renderer must agree. This bypasses the older host
+        # scene-proxy/display-replacement path that caused the early 1440p artifacts.
+        env['TLG_ENGINE_NATIVE_RESOLUTION'] = applied_engine_resolution
+        env['TLG_OUTPUT_RES'] = applied_engine_resolution
+        env['TLG_NATIVE_OUTPUT'] = '0'
+        env['TLG_UPSCALER'] = 'none'
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
@@ -532,6 +552,8 @@ def launch(settings, seconds=0, extra_env=None):
     scene_resolution = settings.get('scene_resolution', '1920x1080')
     if scene_resolution not in SCENE_RESOLUTIONS:
         scene_resolution = '1920x1080'
+    if scene_resolution in ENGINE_NATIVE_RESOLUTIONS and applied_engine_resolution != scene_resolution:
+        raise RuntimeError(f'Native engine resolution {scene_resolution} was not prepared; launch stopped')
     update_ini(USER_DIR / 'tlg.ini', {
         'output_res': scene_resolution,
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen

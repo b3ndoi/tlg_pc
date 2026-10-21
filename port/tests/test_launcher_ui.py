@@ -177,10 +177,20 @@ class LauncherUITests(unittest.TestCase):
             tlg_run.update_ini.reset_mock()
             settings = copy.deepcopy(self.settings)
             settings['scene_resolution'] = requested
-            with self.assertRaises(AssertionError):
-                tlg_run.launch(settings)
+            applied = requested if requested in tlg_run.ENGINE_NATIVE_RESOLUTIONS else None
+            with patch.object(tlg_run, 'applied_engine_resolution', applied), \
+                 self.assertRaises(AssertionError):
+                    tlg_run.launch(settings)
             values = tlg_run.update_ini.call_args.args[1]
             self.assertEqual(values['output_res'], expected)
+
+    def test_launch_refuses_native_resolution_without_matching_preparation(self):
+        settings = {**self.settings, 'scene_resolution': '1280x720'}
+        with patch.object(tlg_run, 'applied_engine_resolution', None), \
+             self.assertRaisesRegex(RuntimeError, 'was not prepared'):
+            tlg_run.launch(settings)
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
 
     def test_busy_prompt_override_is_ignored(self):
         self.app.busy = True

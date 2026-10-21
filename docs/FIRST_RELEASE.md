@@ -52,12 +52,13 @@ hook overlaps.
 Set `TLG_ENGINE_NATIVE_RESOLUTION` to the canonical value written into the patch:
 `1280x720`, `2560x1440`, or `3840x2160`. Other private switches are
 `TLG_INPUT_TIMING_60=1`, `TLG_TIMING_60=1`, `TLG_CLOCK_SYNC_60=1`,
-`TLG_UPSCALER=off`. Keep the older `TLG_NATIVE_OUTPUT` path absent/0.
+`TLG_UPSCALER=none`. Keep the older `TLG_NATIVE_OUTPUT` path absent/0.
 `TLG_PRECISE_PACING=1` is optional; keep `TLG_CLIMB_DIAG` off except for research.
 Set output to the same resolution, English (`game_language=en`, `TLG_LANGUAGE=1`),
-an appropriate VRAM budget and `--timeout 0`. A polished public UI/profile
-integration is deferred; the existing launcher does not automatically enable
-this complete profile when its ordinary 60-FPS option is selected.
+an appropriate VRAM budget and `--timeout 0`. The launcher's explicit resolution
+choices now prepare the guarded engine mode and matching renderer handshake.
+Its ordinary 60-FPS selector still does not automatically enable the additional
+timing switches in this complete developer profile.
 
 ## Regression commands
 

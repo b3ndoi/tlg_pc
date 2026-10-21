@@ -58,7 +58,7 @@ Mods/Cheats support. Existing authorship and history are retained.
 |---|---|
 | Default mode | 30 FPS retained; experimental timing hooks are opt-in and guarded out of 30 FPS |
 | Additional 60 FPS gameplay corrections | Windows, exact CUSA03745 EU 01.00 signatures and applied 60 FPS patch bytes only |
-| Native 720p/1440p/4K at 60 FPS | Developer-only profiles; targeted private playtesting currently covers 1440p only |
+| Native 720p/1440p/4K | Explicit exact-EU launcher choices; targeted private playtesting currently covers 1440p/60 only |
 | Tail-catch slow-motion sequence | Targeted private tests progressed through the catch after the timing corrections |
 | Climbing and Trico shaking | Repeated rocking/climbing-in-place reports remain under investigation |
 | Windows and Linux packages | Both build and package in CI; a successful build is not gameplay certification |
@@ -69,9 +69,10 @@ US 01.03 FPS profile is separate from this fork's additional EU 01.00 timing
 corrections. Supported language selection does not imply that every executable
 revision has the same experimental fixes.
 
-The launcher's ordinary **60 FPS** option does **not** automatically enable the
-complete experimental timing/native-resolution profile. See the
-[developer profile and release gates](docs/FIRST_RELEASE.md) before testing it.
+The resolution selector explicitly prepares the guarded exact-EU native engine
+mode. The ordinary **60 FPS** option still does **not** enable the additional
+experimental timing corrections; see the
+[developer profile and release gates](docs/FIRST_RELEASE.md) before testing them.
 No stamina, aggression, shake-threshold or automatic-grab cheat was added.
 
 ## Tested system and evidence
