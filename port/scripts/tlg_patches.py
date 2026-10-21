@@ -92,6 +92,14 @@ EU_100_PATCHES = {
         (0x24d9924, f32(1 / 30), f32(1 / 60), 'dt snap target 1/30 -> 1/60'),
         (0x24d9928, f32(0.0316666663), f32(0.0158333331), 'dt snap lower bound 0.031667 -> 0.015833'),
     ],
+    # GrassType constructor defaults at image +0x14e8bc0:
+    # accelStep, accelMax, accelDamping, windToSpeed, slowFrame, skipFrame,
+    # animThreshold, animDamping.  Preserve every authored motion value and
+    # only double the four-frame update skip in this experimental EU 60 FPS
+    # A/B. Exact-source Lua edits cover the stage that assigns it again.
+    'grass_skip_60': [
+        (0x24e8bd4, f32(4.0), f32(8.0), 'GrassType default skipFrame 4 -> 8'),
+    ],
 }
 
 MODES = {
@@ -105,6 +113,7 @@ MODES = {
 # The engine rate each mode presents at most (TLG_ENGINE_FPS: the overlay's frame limiter and
 # tlg_graphics.h PresentLimit). Unlocked is paced by the present thread (TLG_VBLANK_HZ=0).
 ENGINE_FPS = {'30': 30, '60': 60, 'unlocked': 240}
+EU_100_60_EXTRA = ['grass_skip_60']
 
 
 def normalize_mode(value):
@@ -185,7 +194,8 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
     fps_writes = []
     eboot = None
     # TLG_FPS_PATCHES="a,b" (measurements): these patches instead of the mode's own.
-    names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES] or MODES[mode]
+    requested_names = [n for n in os.environ.get('TLG_FPS_PATCHES', '').split(',') if n in PATCHES]
+    names = requested_names or MODES[mode]
     if names:
         try:
             eboot = (Path(game_dir) / 'eboot.bin').read_bytes()
@@ -216,7 +226,8 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None):
             try:
                 if eu_build:
                     lines.append('Frame rate: profile CUSA03745 EU 01.00 (verified executable hash)')
-                    fps_writes = mode_writes(eboot, names, EU_100_PATCHES, EU_100_TEXT_SIZE)
+                    eu_names = [*names, *(EU_100_60_EXTRA if mode == '60' and not requested_names else [])]
+                    fps_writes = mode_writes(eboot, eu_names, EU_100_PATCHES, EU_100_TEXT_SIZE)
                 else:
                     fps_writes = mode_writes(eboot, names)
             except ValueError as error:

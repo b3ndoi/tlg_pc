@@ -72,7 +72,26 @@ class ScriptTiming(unittest.TestCase):
         self.assertIn('_result.nWaitFrames = _result.nWaitFrames + 1',move) # state index, not elapsed time
         self.assertNotIn('_tlg60_', source_for('s13_firstflight/missionscript.lua',False))
 
-    def test_02_all_eight_original_and_changed_scripts_compile_lua51(self):
+    def test_01b_vegetation_cadence_only_changes_60fps_compiler_input(self):
+        original_main=source_for('states/main.lua',False)
+        changed_main=source_for('states/main.lua')
+        self.assertIn('env.skinningSettings.skinWindMaxFrameSkip = 1',original_main)
+        self.assertIn('env.skinningSettings.skinWindMaxFrameSkip = 2',changed_main)
+        self.assertNotIn('env.skinningSettings.skinWindMaxFrameSkip = 1',changed_main)
+
+        original_stage=source_for('s06_fallingbridge/missionscript.lua',False)
+        changed_stage=source_for('s06_fallingbridge/missionscript.lua')
+        self.assertEqual(original_stage.count('.grassType.skipFrame = 4'),4)
+        self.assertEqual(changed_stage.count('.grassType.skipFrame = 8'),4)
+        self.assertNotIn('.grassType.skipFrame = 4',changed_stage)
+        # Preserve the separately-authored integration cadence/damping and a
+        # misspelled inactive property instead of guessing at their semantics.
+        for text in ['.grassType.slowFrame = 4', '.grassType.slowFrame = 2',
+                     '.grassType.slipFrame = 4', '.grassType.animDamping = 0.98',
+                     '.grassType.animDamping = 0.95']:
+            self.assertEqual(changed_stage.count(text),original_stage.count(text),text)
+
+    def test_02_all_nine_original_and_changed_scripts_compile_lua51(self):
         vm=lua_vm()
         compile_source=vm.eval('function(source) local f,e=loadstring(source); assert(f,e); return true end')
         for name in ORIGINAL:

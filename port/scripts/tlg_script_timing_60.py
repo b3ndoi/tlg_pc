@@ -30,6 +30,7 @@ end
 '''
 
 SOURCES = {
+    'game/scripts/states/main.lua': 'fa3da4c0b380fe0acc338e0ce90d9a8609ce245d788da2ad2019dcf705381a7f',
     'game/scripts/ai2/condor/condorcommonsurface.lua': 'a4db140fa6ba6825dde2c2c4f8cfa5a3fab815f2458166193d0dc6555f791247',
     'game/scripts/ai2/condor/condorcommonactionbarrel.lua': 'a299e9e33a08285bb3827c0ec9c6978506cb3d43110529720a8261a5662c3c33',
     'game/scripts/ai2/actions/condor/movecost/movecostcondor.lua': 'abb5a2ffaeb4cb85e94de46d5444b9fa6fe502f08b3efd51a63e4745f1965a8b',
@@ -61,7 +62,13 @@ def plan(name, source):
             value = new(m) if callable(new) else new
             edits.append((m.start(), m.end() - m.start(), value))
 
-    if name.endswith('condorcommonsurface.lua'):
+    if name.endswith('states/main.lua'):
+        # Literal doubled-skip A/B: test whether the authored frame skipping
+        # is intentional visual filtering.  Keep this exclusive to the 60 FPS
+        # compiler input; do not alter wind speed, damping, or 30 FPS sources.
+        replace(rb'env\.skinningSettings\.skinWindMaxFrameSkip = 1',
+                b'env.skinningSettings.skinWindMaxFrameSkip = 2')
+    elif name.endswith('condorcommonsurface.lua'):
         replace(rb'work\.RelaxToSleepTimer = work\.RelaxToSleepTimer \+ 1',
                 b'work.RelaxToSleepTimer = work.RelaxToSleepTimer + _tlg60_ticks(info.dt)')
         replace(rb'work\.RelaxToSleepTimer > PettingTime', b'_tlg60_whole(work.RelaxToSleepTimer) > PettingTime')
@@ -80,6 +87,11 @@ def plan(name, source):
     elif '/s06_fallingbridge/' in name:
         replace(rb'state\.time_01 = state\.time_01 \+ 0\.0333333333',
                 b'state.time_01 = state.time_01 + _tlg60_dt()')
+        # This stage explicitly restores four-frame skipping after the
+        # constructor defaults have been applied.  Double only that skip for
+        # this A/B while preserving authored motion rates and damping.
+        replace(rb'(\.grassType\.skipFrame\s*=\s*)4',
+                lambda match: match.group(1) + b'8', count=4)
     elif '/s09_fallingbridge2/' in name:
         for field, literal in [('reach_success_loop', '0.033333333333333333'),
                                ('reach_loop_R_Timer', '0.0333333'),

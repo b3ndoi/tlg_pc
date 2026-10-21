@@ -50,7 +50,7 @@ def checked_writes(elf, mode='60', verify_hash=True):
 
 def expected_base_writes(elf):
     fps = [(offset, data) for offset, data, _ in tlg_patches.mode_writes(
-        elf, tlg_patches.MODES['60'], tlg_patches.EU_100_PATCHES,
+        elf, [*tlg_patches.MODES['60'], *tlg_patches.EU_100_60_EXTRA], tlg_patches.EU_100_PATCHES,
         tlg_patches.EU_100_TEXT_SIZE)]
     return fps + native.checked_writes(elf)
 
@@ -61,7 +61,7 @@ def apply_private_patch(elf_path, patch_path, mode='60'):
     path = Path(patch_path)
     writes = native.decode_patch_file(path.read_bytes())
     if writes != expected_base_writes(elf):
-        raise ValueError('Slow-motion clock: expected exactly four EU 60 FPS writes plus native 1440p')
+        raise ValueError('Slow-motion clock: expected exactly five EU 60 FPS writes plus native 1440p')
     for address, data in clock:
         if any(address < old+len(previous) and old < address+len(data)
                for old, previous in writes):
@@ -73,4 +73,4 @@ def apply_private_patch(elf_path, patch_path, mode='60'):
     path.write_bytes(blob)
     return ('60 FPS slow-motion clock: exact EU 01.00 verified; native quantizer '
             '360 -> 36000000 Hz; zero-speed/overlay gates and 30 FPS unchanged '
-            '(7 total writes, 41 bytes; private patch file only)')
+            '(8 total writes, 45 bytes; private patch file only)')

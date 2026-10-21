@@ -39,11 +39,12 @@ the existing tracked patches, not a new private submodule commit.
 ## Developer-only experimental profile
 
 Prepare a separate package/user directory and physical save copy, never files
-used by a running session. Produce the four guarded EU 60-FPS writes using
+used by a running session. Produce the five guarded EU 60-FPS writes using
 `tlg_patches.py`. On that private patch-file copy, call
 `tlg_native_resolution.apply_private_patch(elf_path, patch_path)` then
-`tlg_slowmotion_60.apply_private_patch(elf_path, patch_path)`: seven writes,
-41 bytes. Preserve ISA/red-zone preparation and check for hook overlaps.
+`tlg_slowmotion_60.apply_private_patch(elf_path, patch_path)`: eight writes,
+45 bytes with the EU vegetation-cadence A/B. Preserve ISA/red-zone preparation
+and check for hook overlaps.
 
 Private switches: `TLG_ENGINE_NATIVE_RESOLUTION=2560x1440`,
 `TLG_INPUT_TIMING_60=1`, `TLG_TIMING_60=1`, `TLG_CLOCK_SYNC_60=1`,

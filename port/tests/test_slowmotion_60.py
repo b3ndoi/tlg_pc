@@ -59,7 +59,7 @@ class SlowMotionTests(unittest.TestCase):
             note=s.apply_private_patch(elf,patch)
             writes=n.decode_patch_file(patch.read_bytes())
             self.assertEqual(writes,base+s.checked_writes(ELF))
-            self.assertEqual(sum(len(data) for _,data in writes),41)
+            self.assertEqual(sum(len(data) for _,data in writes),45)
             self.assertIn('30 FPS unchanged',note)
             self.assertEqual(elf.read_bytes(),ELF)
             original=patch.read_bytes()
