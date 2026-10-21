@@ -253,7 +253,13 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, native_res
             if any(address < old + len(previous) and old < address + len(data)
                    for old, previous, _ in writes):
                 raise ValueError('Native engine resolution: overlapping frame-rate/mod patch')
-            writes.append((address, data, f'native engine resolution {resolution}'))
+            if address == native.GARLIC_OFFSET:
+                what = (f'garlic: GPU heap {native.GARLIC_BASE_MB} -> '
+                        f'{native.GARLIC_SIZE_MB} MB')
+                lines.append(f'Patch {what} ({data.hex()})')
+            else:
+                what = f'native engine resolution {resolution}'
+            writes.append((address, data, what))
         width, height = native.RESOLUTIONS[resolution]
         lines.append(f'Native engine resolution: verified {width}x{height}; host scene proxies disabled')
     write_patch_file(Path(out_dir) / 'patches.bin', writes)

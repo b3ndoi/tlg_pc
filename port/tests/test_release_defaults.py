@@ -25,7 +25,7 @@ class ReleaseDefaults(unittest.TestCase):
     def test_60_environment_is_not_enabled_by_default(self):
         switches = {'TLG_TIMING_60', 'TLG_INPUT_TIMING_60', 'TLG_CLOCK_SYNC_60',
                     'TLG_CLIMB_DIAG', 'TLG_PRECISE_PACING', 'TLG_NATIVE_OUTPUT',
-                    'TLG_ENGINE_NATIVE_RESOLUTION', 'TLG_TROPHY_STATE'}
+                    'TLG_ENGINE_NATIVE_RESOLUTION', 'TLG_DMEM_MB', 'TLG_TROPHY_STATE'}
         self.assertTrue(switches.isdisjoint(tlg_run.DEFAULT_ENV))
         settings = dict(tlg_run.DEFAULT_SETTINGS)
         with patch.dict('os.environ', {}, clear=True), \
@@ -59,6 +59,7 @@ class ReleaseDefaults(unittest.TestCase):
         settings = {**tlg_run.DEFAULT_SETTINGS, 'scene_resolution': '1280x720'}
         with patch.dict(os.environ, {}, clear=True), \
              patch.object(tlg_run, 'applied_engine_resolution', '1280x720'), \
+             patch.object(tlg_run, 'applied_garlic_extra', 0), \
              patch.object(tlg_run, 'window_icon', return_value=None), \
              patch.object(tlg_run, 'ngs2_module', return_value=None):
             env = tlg_run.build_env(settings)
@@ -66,6 +67,17 @@ class ReleaseDefaults(unittest.TestCase):
         self.assertEqual(env['TLG_OUTPUT_RES'], '1280x720')
         self.assertEqual(env['TLG_NATIVE_OUTPUT'], '0')
         self.assertEqual(env['TLG_UPSCALER'], 'none')
+        self.assertNotIn('TLG_DMEM_MB', env)
+
+    def test_large_native_mode_grows_direct_memory_with_the_gpu_heap(self):
+        settings = {**tlg_run.DEFAULT_SETTINGS, 'scene_resolution': '3840x2160'}
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(tlg_run, 'applied_engine_resolution', '3840x2160'), \
+             patch.object(tlg_run, 'applied_garlic_extra', native_resolution.GARLIC_EXTRA_MB), \
+             patch.object(tlg_run, 'window_icon', return_value=None), \
+             patch.object(tlg_run, 'ngs2_module', return_value=None):
+            env = tlg_run.build_env(settings)
+        self.assertEqual(env['TLG_DMEM_MB'], '6304')
 
     def test_native_resolution_options_are_explicit_and_1440p_stays_default(self):
         self.assertEqual(native_resolution.DEFAULT_RESOLUTION, '2560x1440')

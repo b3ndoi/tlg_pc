@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Exact EU 01.00 regular-mode resolution patch; only private patches.bin is written.
+"""Exact EU 01.00 regular-mode resolution and large-frame heap patches.
 
 Uses PR #79's engine-mode approach, independently mapped for this ELF. Do not
 copy the 1.03 address or alter the Pro/checkerboard entries. No game archives,
@@ -37,6 +37,17 @@ TABLE_EXPECTED = bytes.fromhex(
 # The regular-mode selector really loads these 16 bytes, not the Pro entry.
 SELECTOR_OFFSET = 0xB8A685
 SELECTOR_EXPECTED = bytes.fromhex('488b0584fcb200c5f828056cfcb200')
+# The game's render allocator starts with a 2816 MiB Garlic heap. At 4K the
+# original heap can run out while allocating the lower render targets, which
+# shows up as a corrupted strip at the bottom of the frame. This unique EU
+# 01.00 mov r15d, 0xb0000000 was independently located and disassembled; 4064
+# MiB stays 32 MiB below the instruction's 32-bit immediate limit. The launcher
+# grows direct memory by the same delta whenever this write is present.
+GARLIC_OFFSET = 0xCFF1F6
+GARLIC_EXPECTED = bytes.fromhex('41bf000000b0')
+GARLIC_BASE_MB = 2816
+GARLIC_EXTRA_MB = 1248
+GARLIC_SIZE_MB = GARLIC_BASE_MB + GARLIC_EXTRA_MB
 
 
 def normalize_resolution(resolution=DEFAULT_RESOLUTION):
@@ -52,6 +63,16 @@ def normalize_resolution(resolution=DEFAULT_RESOLUTION):
 def mode_bytes(resolution=DEFAULT_RESOLUTION):
     width, height = RESOLUTIONS[normalize_resolution(resolution)]
     return struct.pack('<4HQ', width, height, width, height, 0)
+
+
+def needs_garlic_growth(resolution=DEFAULT_RESOLUTION):
+    """Larger-than-1080p engine modes need more room for native render targets."""
+    width, height = RESOLUTIONS[normalize_resolution(resolution)]
+    return width * height > 1920 * 1080
+
+
+def garlic_bytes():
+    return GARLIC_EXPECTED[:2] + struct.pack('<I', GARLIC_SIZE_MB << 20)
 
 
 # Compatibility for private callers that imported the original 1440p constant.
@@ -78,11 +99,17 @@ def checked_writes(elf, verify_hash=True, resolution=DEFAULT_RESOLUTION):
     resolution = normalize_resolution(resolution)
     if verify_hash and hashlib.sha256(elf).hexdigest() != ELF_SHA256:
         raise ValueError('Native resolution: unsupported ELF; exact EU 01.00 hash required')
-    for address, expected in ((MODE_OFFSET, TABLE_EXPECTED), (SELECTOR_OFFSET, SELECTOR_EXPECTED)):
+    guards = [(MODE_OFFSET, TABLE_EXPECTED), (SELECTOR_OFFSET, SELECTOR_EXPECTED)]
+    if needs_garlic_growth(resolution):
+        guards.append((GARLIC_OFFSET, GARLIC_EXPECTED))
+    for address, expected in guards:
         offset = mapped_offset(elf, address, len(expected))
         if elf[offset:offset+len(expected)] != expected:
             raise ValueError(f'Native resolution: expected bytes mismatch at guest +{address:#x}')
-    return [(MODE_OFFSET, mode_bytes(resolution))]
+    writes = [(MODE_OFFSET, mode_bytes(resolution))]
+    if needs_garlic_growth(resolution):
+        writes.append((GARLIC_OFFSET, garlic_bytes()))
+    return writes
 
 
 def decode_patch_file(blob):
@@ -128,9 +155,12 @@ def apply_private_patch(elf_path, patch_path, resolution=DEFAULT_RESOLUTION):
         blob += struct.pack('<QQ', address, len(data)) + data
     path.write_bytes(blob)
     width, height = RESOLUTIONS[resolution]
+    heap_note = (f'; GPU heap {GARLIC_BASE_MB}->{GARLIC_SIZE_MB} MiB'
+                 if needs_garlic_growth(resolution) else '')
     return (f'Engine native resolution: CUSA03745 EU 01.00 verified; regular mode guest '
             f'+{MODE_OFFSET:#x}: render/output {width}x{height}; checkerboard off; '
-            'Pro table, pointers and 16:9 UI/aspect unchanged (6 total writes, 37 bytes)')
+            f'Pro table, pointers and 16:9 UI/aspect unchanged{heap_note} '
+            f'({len(writes)} total writes, {sum(len(data) for _, data in writes)} bytes)')
 
 
 def main():

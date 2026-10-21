@@ -106,6 +106,8 @@ ENGINE_NATIVE_RESOLUTIONS = {'1280x720', '2560x1440', '3840x2160'}
 applied_frame_rate = '30'
 # The guarded engine mode prepare() really wrote; None keeps the baseline/host path.
 applied_engine_resolution = None
+# MiB added to the game's Garlic heap; direct memory must grow by the same amount.
+applied_garlic_extra = 0
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -340,9 +342,10 @@ def set_mod_enabled(key, enabled):
 def prepare(settings, log=print):
     """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame-rate/native-mode
     patches and enabled mods); returns the module list that was linked."""
-    global applied_frame_rate, applied_engine_resolution
+    global applied_frame_rate, applied_engine_resolution, applied_garlic_extra
     applied_frame_rate = '30'
     applied_engine_resolution = None
+    applied_garlic_extra = 0
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -373,6 +376,9 @@ def prepare(settings, log=print):
             log(line)
             if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
                 applied_frame_rate = line.split()[2]
+            if line.startswith('Patch garlic: '):
+                words = line.split()  # "... GPU heap 2816 -> N MB (bytes)"
+                applied_garlic_extra = int(words[-3]) - int(words[-5])
     applied_engine_resolution = native_resolution
     isa_table(log)
     return modules
@@ -500,6 +506,9 @@ def build_env(settings, extra=None):
         env['TLG_OUTPUT_RES'] = applied_engine_resolution
         env['TLG_NATIVE_OUTPUT'] = '0'
         env['TLG_UPSCALER'] = 'none'
+    if applied_garlic_extra:
+        # The enlarged game heap is allocated from the emulated PS4 direct-memory pool.
+        env.setdefault('TLG_DMEM_MB', str(5056 + applied_garlic_extra))
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.

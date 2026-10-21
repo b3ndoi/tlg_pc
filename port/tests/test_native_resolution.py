@@ -17,8 +17,10 @@ import tlg_patches
 class NativeResolutionTests(unittest.TestCase):
     def test_real_elf_and_selector_are_independently_guarded(self):
         self.assertEqual(hashlib.sha256(ELF).hexdigest(), n.ELF_SHA256)
-        self.assertEqual(n.checked_writes(ELF), [(n.MODE_OFFSET, n.MODE_NEW)])
-        for address in (n.MODE_OFFSET, n.MODE_OFFSET+16, n.MODE_OFFSET+72, n.SELECTOR_OFFSET):
+        self.assertEqual(n.checked_writes(ELF),
+                         [(n.MODE_OFFSET, n.MODE_NEW), (n.GARLIC_OFFSET, n.garlic_bytes())])
+        for address in (n.MODE_OFFSET, n.MODE_OFFSET+16, n.MODE_OFFSET+72,
+                        n.SELECTOR_OFFSET, n.GARLIC_OFFSET):
             corrupted = bytearray(ELF)
             offset = n.mapped_offset(ELF, address, 1)
             corrupted[offset] ^= 1
@@ -41,8 +43,15 @@ class NativeResolutionTests(unittest.TestCase):
                                  original[at+16:at+len(n.TABLE_EXPECTED)])
                 self.assertEqual(struct.unpack_from('<4HQ', patched, at+72),
                                  (1680,1890,3360,1890,1))
-                self.assertEqual(patched[:at], original[:at])
-                self.assertEqual(patched[at+16:], original[at+16:])
+                garlic = n.mapped_offset(ELF, n.GARLIC_OFFSET, len(n.GARLIC_EXPECTED))
+                expected = bytearray(original)
+                expected[at:at+16] = n.mode_bytes(resolution)
+                if n.needs_garlic_growth(resolution):
+                    expected[garlic:garlic+len(n.GARLIC_EXPECTED)] = n.garlic_bytes()
+                    self.assertEqual(patched[garlic:garlic+6], bytes.fromhex('41bf000000fe'))
+                else:
+                    self.assertEqual(patched[garlic:garlic+6], n.GARLIC_EXPECTED)
+                self.assertEqual(patched, expected)
 
     def test_resolution_aliases_and_invalid_values(self):
         self.assertEqual(n.normalize_resolution('720p'), '1280x720')
@@ -66,10 +75,13 @@ class NativeResolutionTests(unittest.TestCase):
                 note = n.apply_private_patch(elf,patches,resolution)
                 writes = n.decode_patch_file(patches.read_bytes())
                 self.assertEqual(writes[:5],old)
-                self.assertEqual(writes[5:],[(n.MODE_OFFSET,n.mode_bytes(resolution))])
-                self.assertEqual(sum(len(data) for _,data in writes),37)
+                self.assertEqual(writes[5:], n.checked_writes(ELF, resolution=resolution))
+                expected_bytes = 43 if n.needs_garlic_growth(resolution) else 37
+                self.assertEqual(sum(len(data) for _,data in writes), expected_bytes)
                 self.assertIn(f'render/output {resolution}',note)
                 self.assertIn('checkerboard off',note)
+                self.assertEqual('GPU heap 2816->4064 MiB' in note,
+                                 n.needs_garlic_growth(resolution))
                 self.assertEqual(hashlib.sha256(elf.read_bytes()).hexdigest(),before_elf)
                 with self.assertRaises(ValueError): n.apply_private_patch(elf,patches,resolution)
 

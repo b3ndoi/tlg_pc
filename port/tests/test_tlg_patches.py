@@ -146,6 +146,19 @@ class FrameRatePatchTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from('<QQ', blob, 24), (0x1234, 4))
         self.assertEqual(blob[40:], b'\x00\x05\xd0\x02')
 
+    def test_large_native_mode_reports_guarded_gpu_heap_growth(self):
+        import tlg_native_resolution as native
+        writes = [(native.MODE_OFFSET, native.mode_bytes('4k')),
+                  (native.GARLIC_OFFSET, native.garlic_bytes())]
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(t, 'read_eboot_elf', return_value=b'exact fixture'), \
+             patch('tlg_native_resolution.checked_writes', return_value=writes):
+            Path(tmp, 'eboot.bin').write_bytes(b'')
+            _, lines = t.prepare(tmp, tmp, '30', native_resolution='3840x2160')
+            blob = Path(tmp, 'patches.bin').read_bytes()
+        self.assertIn('Patch garlic: GPU heap 2816 -> 4064 MB (41bf000000fe)', lines)
+        self.assertEqual(struct.unpack_from('<8sQQ', blob), (b'G3PATCH2', 0, 2))
+
 
 class ModTitleIdTests(unittest.TestCase):
     EU_XML = """<?xml version="1.0"?>
