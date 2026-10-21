@@ -13,7 +13,11 @@ import re
 
 PREFIX = b'''-- TLG experimental EU 01.00: elapsed-time corrections, loader-gated to 60 FPS.
 local function _tlg60_dt(dt)
-    if dt == nil and type(GetGameDeltaTime) == "function" then dt = GetGameDeltaTime() end
+    if dt == nil then
+        local clock = type(MS) == "table" and MS.GetGameDeltaTime or nil
+        if type(clock) ~= "function" then clock = GetGameDeltaTime end
+        if type(clock) == "function" then dt = clock() end
+    end
     if type(dt) ~= "number" or dt ~= dt or dt <= 0 or dt == math.huge then return 0 end
     return dt
 end

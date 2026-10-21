@@ -107,6 +107,49 @@ vegetation fix worked. This validates the targeted visual improvement on the
 tested EU 01.00 build; it does not claim that every vegetation system or scene
 has completed full-game validation.
 
+### Falling Bridge 2 tree-tail rescue clock (2026-10-21)
+
+The experimental 60 FPS mission timer helper looked only for a global
+`GetGameDeltaTime`. In the retail EU stage environment that global is nil;
+the clock is `MS.GetGameDeltaTime()`. As a result, the tree-tail rescue could
+enter its success animation but never advance its half-second release timer,
+leaving the boy attached to the branch indefinitely.
+
+The helper now prefers the retail module clock, retaining the global function
+as a legacy fallback. Explicit dt still takes precedence, including zero for
+pauses; invalid or missing time remains zero. This is the shared helper for the
+existing nine exact-source 60 FPS transforms, so other no-explicit-dt mission
+and mechanism timers also receive the correct clock. Explicit-dt AI callers
+keep their existing behavior.
+
+The authored success-animation predicate, reset when that animation ends,
+strict >0.5-second handoff, branch release and escape command remain intact.
+There is no forced catch, reach/swing debounce, grip boost, collision bypass or
+ordinary-climbing change. Existing EU executable/source fingerprints and the
+opt-in 60 FPS loader gate are unchanged. Native 30 FPS receives no transform.
+
+Matched tests used independent copies of the same save at native 1440p:
+
+- Native 30 FPS caught the tail twice; the release timer reached 0.53333336 s.
+- The broken 60 FPS build reached the same success animation but its timer
+  stayed zero despite a positive module clock, and never released the branch.
+- The corrected 60 FPS build passed both user attempts. Both releases occurred
+  at 0.50277781 s, with tail attachment recorded 47 ms later. Subsequent logs
+  recorded body-part tracking and progression through
+  `FB2_After_Try_Touch_Under` to `FB2_Start_HungryEvent`.
+
+This validates the tested rescue, not every 60 FPS sequence. Intermittent
+tail-to-body climbing stalls remain a separate investigation; rendering in the
+tested area was below a locked 60 FPS. Read-only diagnostic instrumentation
+used to establish these results is not required by, or included in, this fix.
+No saves, logs, extracted scripts, textures, trophy images or other game assets
+are included.
+
+Offline Lua 5.1 regressions cover the module-only retail namespace, legacy
+fallback, explicit-dt precedence, pause/invalid time, and the actual transformed
+rescue block at 30/45/60/120 Hz and variable dt. Reach/swing flags alone never
+release the branch, and losing the success animation resets the native timer.
+
 Estado em 13/10/2026: **experimental, desligado por padrão.** O modo 30 FPS é o jogo como no PS4,
 sem nenhum patch.
 
