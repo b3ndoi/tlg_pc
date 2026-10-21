@@ -90,6 +90,8 @@ DEFAULT_SETTINGS = {
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
+    # Host output/UI size. This is separate from the guarded EU engine-native developer profile.
+    'scene_resolution': '1920x1080',
     'track_achievements': True,    # observes existing trophy events only; never patches game logic
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
     'trophy_metadata_dir': '',     # owner-supplied decrypted XML; never bundled/downloaded
@@ -98,6 +100,7 @@ DEFAULT_SETTINGS = {
     'ps5_prompt_image': '',        # optional local art, never bundled with the port
 }
 FRAME_RATES = ['30', '60', 'unlocked']
+SCENE_RESOLUTIONS = ['1280x720', '1920x1080', '2560x1440', '3840x2160']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
 applied_frame_rate = '30'
 
@@ -520,7 +523,11 @@ def launch(settings, seconds=0, extra_env=None):
         if info:
             observed = achievements.Store(USER_DIR, info['title_id'])._read_json()
             native_trophies.seed(USER_DIR, info['title_id'], observed)
+    scene_resolution = settings.get('scene_resolution', '1920x1080')
+    if scene_resolution not in SCENE_RESOLUTIONS:
+        scene_resolution = '1920x1080'
     update_ini(USER_DIR / 'tlg.ini', {
+        'output_res': scene_resolution,
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),

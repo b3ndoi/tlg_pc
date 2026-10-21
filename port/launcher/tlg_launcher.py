@@ -285,7 +285,13 @@ class Launcher:
         spin.bind('<FocusOut>', lambda _: self.changed())
         ttk.Label(page, text=self.t('vram_hint'), style='Muted.TLabel', wraplength=880,
                   justify='left').grid(row=6, column=0, columnspan=3, sticky='w', pady=(6, 8))
-        self.build_filters(page, 7)
+        self.scene_resolution_box = self.combo(
+            page, 7, 'scene_resolution', tlg_run.SCENE_RESOLUTIONS,
+            lambda key: self.t('scene_' + key))
+        ttk.Label(page, text=self.t('scene_hint'), style='Muted.TLabel',
+                  wraplength=880, justify='left').grid(
+                      row=8, column=0, columnspan=3, sticky='w', pady=(6, 12))
+        self.build_filters(page, 9)
 
     def build_controls(self, page):
         page.columnconfigure(1, weight=1)

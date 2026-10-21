@@ -158,6 +158,30 @@ class LauncherUITests(unittest.TestCase):
         tlg_run.update_ini.assert_not_called()
         tlg_run.subprocess.Popen.assert_not_called()
 
+    def test_output_resolution_choices_include_720p_2k_and_4k(self):
+        self.assertEqual(tlg_run.SCENE_RESOLUTIONS,
+                         ['1280x720', '1920x1080', '2560x1440', '3840x2160'])
+        self.assertEqual(len(self.app.scene_resolution_box['values']), 4)
+        for index, resolution in enumerate(tlg_run.SCENE_RESOLUTIONS):
+            self.app.scene_resolution_box.current(index)
+            self.app.scene_resolution_box.event_generate('<<ComboboxSelected>>')
+            self.window.update_idletasks()
+            self.assertEqual(self.app.settings['scene_resolution'], resolution)
+        self.assertEqual(tlg_run.save_settings.call_count, 4)
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
+
+    def test_launch_writes_selected_output_resolution_and_rejects_stale_values(self):
+        for requested, expected in [('1280x720', '1280x720'), ('2560x1440', '2560x1440'),
+                                    ('3840x2160', '3840x2160'), ('7680x4320', '1920x1080')]:
+            tlg_run.update_ini.reset_mock()
+            settings = copy.deepcopy(self.settings)
+            settings['scene_resolution'] = requested
+            with self.assertRaises(AssertionError):
+                tlg_run.launch(settings)
+            values = tlg_run.update_ini.call_args.args[1]
+            self.assertEqual(values['output_res'], expected)
+
     def test_busy_prompt_override_is_ignored(self):
         self.app.busy = True
         self.app.prompt_box.current(4)
