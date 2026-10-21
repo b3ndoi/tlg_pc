@@ -8,8 +8,8 @@
 
 A community-maintained fork of **[HayatoG/tlg_pc](https://github.com/HayatoG/tlg_pc)**,
 maintained here by **[b3ndoi](https://github.com/b3ndoi)**. Our focus is Windows
-stability, carefully guarded 60 FPS timing corrections, native 2560×1440
-experiments, and clearer testing and release documentation.
+stability, carefully guarded 60 FPS timing corrections, experimental native
+720p/1440p/4K engine modes, and clearer testing and release documentation.
 
 The original PS4 game's CPU code runs natively on an x86-64 PC. The port
 reimplements the PS4 services it needs and translates its GPU commands and
@@ -37,8 +37,9 @@ new game or a claim of ownership over The Last Guardian.
   NULL-read site in the exact EU 01.00 executable, not blanket fault suppression.
 - **Experimental 60 FPS timing:** opt-in input-hold and selected script-timer
   corrections, plus synchronized slow-motion animation and physics clocks.
-- **Experimental native 1440p:** a guarded regular-engine 2560×1440 profile,
-  distinct from the earlier scene-supersampling path with a 1080p final image.
+- **Experimental native resolution modes:** guarded regular-engine 1280×720,
+  2560×1440 and 3840×2160 profiles, distinct from the earlier host scene-proxy
+  scaling path. Only the 1440p profile has targeted gameplay observations so far.
 - **Experimental device prompts:** optional keyboard/mouse, PS5 and Xbox
   tutorial/controller-guide images, automatic switching or a manual override,
   and a display-resolution guide using an optional local controller PNG.
@@ -57,7 +58,7 @@ Mods/Cheats support. Existing authorship and history are retained.
 |---|---|
 | Default mode | 30 FPS retained; experimental timing hooks are opt-in and guarded out of 30 FPS |
 | Additional 60 FPS gameplay corrections | Windows, exact CUSA03745 EU 01.00 signatures and applied 60 FPS patch bytes only |
-| Native 2560×1440 at 60 FPS | Targeted private playtesting; developer-only profile, not a fully integrated launcher preset |
+| Native 720p/1440p/4K at 60 FPS | Developer-only profiles; targeted private playtesting currently covers 1440p only |
 | Tail-catch slow-motion sequence | Targeted private tests progressed through the catch after the timing corrections |
 | Climbing and Trico shaking | Repeated rocking/climbing-in-place reports remain under investigation |
 | Windows and Linux packages | Both build and package in CI; a successful build is not gameplay certification |
@@ -69,7 +70,7 @@ corrections. Supported language selection does not imply that every executable
 revision has the same experimental fixes.
 
 The launcher's ordinary **60 FPS** option does **not** automatically enable the
-complete experimental timing/native-1440p profile. See the
+complete experimental timing/native-resolution profile. See the
 [developer profile and release gates](docs/FIRST_RELEASE.md) before testing it.
 No stamina, aggression, shake-threshold or automatic-grab cheat was added.
 
@@ -97,7 +98,7 @@ with the build, resolution, settings and tested scene.
 
 These inherited screenshots demonstrate the upstream port on Linux with an
 RTX 2060 at 1920×1080. They are **not** screenshots or benchmarks of this fork's
-Windows native-1440p profile.
+Windows native-resolution profiles.
 
 | | |
 |---|---|

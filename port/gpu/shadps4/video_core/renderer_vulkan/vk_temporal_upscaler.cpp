@@ -195,6 +195,8 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     const char* native_output = std::getenv("TLG_NATIVE_OUTPUT");
     native_output_requested = native_output && std::strcmp(native_output, "1") == 0;
     const char* engine_resolution = std::getenv("TLG_ENGINE_NATIVE_RESOLUTION");
+    const auto engine_size = Vulkan::NativeOutput::EngineSize(
+        engine_resolution ? engine_resolution : "");
     engine_native_output = Vulkan::NativeOutput::EngineNative(
         engine_resolution ? engine_resolution : "", scaled_session, native_output_requested,
         env && std::strcmp(env, "none") == 0);
@@ -208,8 +210,8 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
         }
     }
     if (engine_native_output) {
-        target_width = render_width = 2560;
-        target_height = render_height = 1440;
+        target_width = render_width = engine_size[0];
+        target_height = render_height = engine_size[1];
     }
     // Scene depth copied into the output-size UI depth by a blit (depth aspect).
     const auto features = instance.GetPhysicalDevice()
@@ -284,15 +286,16 @@ bool TemporalUpscaler::NativeOutput() const {
 bool TemporalUpscaler::OnFrameStart() {
     if (engine_native_output) {
         // Engine allocations, dispatch sizes, stencil/material buffers and all
-        // screen constants now agree. Never split them across 1080p/1440p host
+        // screen constants now agree. Never split them across guest/host
         // proxies or apply the inherited UI/FSR composition to this session.
         scene_targets.SetSize({});
-        TlgSettings::Get().active_render_width = 2560;
-        TlgSettings::Get().active_render_height = 1440;
+        TlgSettings::Get().active_render_width = target_width;
+        TlgSettings::Get().active_render_height = target_height;
         static bool announced = false;
         if (!announced) {
-            std::printf("Engine native rendering: 2560x1440; host scene proxies, display replacement, "
-                        "temporal upscaling and coordinate rescaling disabled\n");
+            std::printf("Engine native rendering: %ux%u; host scene proxies, display replacement, "
+                        "temporal upscaling and coordinate rescaling disabled\n",
+                        target_width, target_height);
             announced = true;
         }
         return false;

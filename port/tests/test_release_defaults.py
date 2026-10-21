@@ -1,5 +1,6 @@
 """Asset-free release safeguards; never launches a game or edits user settings."""
 from pathlib import Path
+import struct
 import sys
 import unittest
 from unittest.mock import patch
@@ -8,6 +9,7 @@ PORT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PORT / 'launcher'))
 sys.path.insert(0, str(PORT / 'scripts'))
 import tlg_patches
+import tlg_native_resolution as native_resolution
 import tlg_run
 
 
@@ -35,6 +37,22 @@ class ReleaseDefaults(unittest.TestCase):
     def test_timeout_is_not_added(self):
         import inspect
         self.assertEqual(inspect.signature(tlg_run.launch).parameters['seconds'].default, 0)
+
+    def test_native_resolution_options_are_explicit_and_1440p_stays_default(self):
+        self.assertEqual(native_resolution.DEFAULT_RESOLUTION, '2560x1440')
+        self.assertEqual(native_resolution.normalize_resolution('720p'), '1280x720')
+        self.assertEqual(native_resolution.normalize_resolution('2K'), '2560x1440')
+        self.assertEqual(native_resolution.normalize_resolution('1440p'), '2560x1440')
+        self.assertEqual(native_resolution.normalize_resolution('4K'), '3840x2160')
+        self.assertEqual(struct.unpack('<4HQ', native_resolution.mode_bytes('720p')),
+                         (1280, 720, 1280, 720, 0))
+        self.assertEqual(struct.unpack('<4HQ', native_resolution.MODE_NEW),
+                         (2560, 1440, 2560, 1440, 0))
+        self.assertEqual(struct.unpack('<4HQ', native_resolution.mode_bytes('4k')),
+                         (3840, 2160, 3840, 2160, 0))
+        for unsupported in ('', '1080p', '7680x4320', None):
+            with self.assertRaises(ValueError):
+                native_resolution.normalize_resolution(unsupported)
 
 
 if __name__ == '__main__':

@@ -27,36 +27,51 @@ class NativeResolutionTests(unittest.TestCase):
 
     def test_regular_mode_not_pro_and_all_buffers_use_same_dimensions(self):
         original = ELF
-        patched = bytearray(ELF)
-        for address, value in n.checked_writes(ELF):
-            at = n.mapped_offset(ELF, address, len(value))
-            patched[at:at+len(value)] = value
-        at = n.mapped_offset(ELF, n.MODE_OFFSET, len(n.TABLE_EXPECTED))
-        self.assertEqual(struct.unpack_from('<4HQ', patched, at), (2560,1440,2560,1440,0))
-        self.assertEqual(patched[at+16:at+len(n.TABLE_EXPECTED)], original[at+16:at+len(n.TABLE_EXPECTED)])
-        self.assertEqual(struct.unpack_from('<4HQ', patched, at+72), (1680,1890,3360,1890,1))
-        self.assertEqual(patched[:at], original[:at])
-        self.assertEqual(patched[at+16:], original[at+16:])
+        for resolution, dimensions in n.RESOLUTIONS.items():
+            with self.subTest(resolution=resolution):
+                patched = bytearray(ELF)
+                for address, value in n.checked_writes(ELF, resolution=resolution):
+                    at = n.mapped_offset(ELF, address, len(value))
+                    patched[at:at+len(value)] = value
+                at = n.mapped_offset(ELF, n.MODE_OFFSET, len(n.TABLE_EXPECTED))
+                width, height = dimensions
+                self.assertEqual(struct.unpack_from('<4HQ', patched, at),
+                                 (width,height,width,height,0))
+                self.assertEqual(patched[at+16:at+len(n.TABLE_EXPECTED)],
+                                 original[at+16:at+len(n.TABLE_EXPECTED)])
+                self.assertEqual(struct.unpack_from('<4HQ', patched, at+72),
+                                 (1680,1890,3360,1890,1))
+                self.assertEqual(patched[:at], original[:at])
+                self.assertEqual(patched[at+16:], original[at+16:])
+
+    def test_resolution_aliases_and_invalid_values(self):
+        self.assertEqual(n.normalize_resolution('720p'), '1280x720')
+        self.assertEqual(n.normalize_resolution('2K'), '2560x1440')
+        self.assertEqual(n.normalize_resolution('4K'), '3840x2160')
+        for value in ('', '1920x1080', '8k', None):
+            with self.assertRaises(ValueError): n.normalize_resolution(value)
 
     def test_fps_is_retained_and_private_patch_file_only(self):
         before_elf = hashlib.sha256(ELF).hexdigest()
         old = [(offset,data) for offset,data,_ in tlg_patches.mode_writes(
             ELF,[*tlg_patches.MODES['60'],*tlg_patches.EU_100_60_EXTRA],
             tlg_patches.EU_100_PATCHES,tlg_patches.EU_100_TEXT_SIZE)]
-        with tempfile.TemporaryDirectory(dir='.') as directory:
-            root = Path(directory)
-            elf = root/'eboot.elf'
-            elf.write_bytes(ELF)
-            patches = root/'patches.bin'
-            tlg_patches.write_patch_file(patches, [(offset,data,'test') for offset,data in old])
-            note = n.apply_private_patch(elf,patches)
-            writes = n.decode_patch_file(patches.read_bytes())
-            self.assertEqual(writes[:5],old)
-            self.assertEqual(writes[5:],[(n.MODE_OFFSET,n.MODE_NEW)])
-            self.assertEqual(sum(len(data) for _,data in writes),37)
-            self.assertIn('checkerboard off',note)
-            self.assertEqual(hashlib.sha256(elf.read_bytes()).hexdigest(),before_elf)
-            with self.assertRaises(ValueError): n.apply_private_patch(elf,patches)
+        for resolution in n.RESOLUTIONS:
+            with self.subTest(resolution=resolution), tempfile.TemporaryDirectory(dir='.') as directory:
+                root = Path(directory)
+                elf = root/'eboot.elf'
+                elf.write_bytes(ELF)
+                patches = root/'patches.bin'
+                tlg_patches.write_patch_file(patches, [(offset,data,'test') for offset,data in old])
+                note = n.apply_private_patch(elf,patches,resolution)
+                writes = n.decode_patch_file(patches.read_bytes())
+                self.assertEqual(writes[:5],old)
+                self.assertEqual(writes[5:],[(n.MODE_OFFSET,n.mode_bytes(resolution))])
+                self.assertEqual(sum(len(data) for _,data in writes),37)
+                self.assertIn(f'render/output {resolution}',note)
+                self.assertIn('checkerboard off',note)
+                self.assertEqual(hashlib.sha256(elf.read_bytes()).hexdigest(),before_elf)
+                with self.assertRaises(ValueError): n.apply_private_patch(elf,patches,resolution)
 
     def test_unknown_build_and_bad_mapping_fail_closed(self):
         with self.assertRaises(ValueError): n.checked_writes(b'unknown')

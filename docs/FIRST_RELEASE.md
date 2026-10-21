@@ -29,8 +29,9 @@ the existing tracked patches, not a new private submodule commit.
   `580ba4bc7f9b785bfde0948be20ec67a30ca8c9318606ba5cbf28a1a01d54565`.
   Never reuse these offsets for US/EU 01.03. The upstream US FPS profile remains
   separate; these extra gameplay fixes are not validated there.
-- Native 1440p changes the regular engine mode, not the Pro/checkerboard entry
-  or the older host scene-proxy supersampling path.
+- Native 720p/1440p/4K changes the regular engine mode, not the Pro/checkerboard
+  entry or the older host scene-proxy scaling path. Only 1440p has targeted
+  gameplay observations; 720p and 4K remain unvalidated experimental options.
 - Private v7/v8 tail catches succeeded. Repeated rocking/climbing stalls remain
   under investigation. No aggression, stamina, shake threshold, catch volume
   or automatic-grab cheat was added. Full 60-FPS campaign not validated.
@@ -41,17 +42,20 @@ the existing tracked patches, not a new private submodule commit.
 Prepare a separate package/user directory and physical save copy, never files
 used by a running session. Produce the five guarded EU 60-FPS writes using
 `tlg_patches.py`. On that private patch-file copy, call
-`tlg_native_resolution.apply_private_patch(elf_path, patch_path)` then
-`tlg_slowmotion_60.apply_private_patch(elf_path, patch_path)`: eight writes,
-45 bytes with the EU vegetation-cadence A/B. Preserve ISA/red-zone preparation
-and check for hook overlaps.
+`tlg_native_resolution.apply_private_patch(elf_path, patch_path, resolution)` then
+`tlg_slowmotion_60.apply_private_patch(elf_path, patch_path, resolution=resolution)`:
+eight writes, 45 bytes with the EU vegetation-cadence A/B. `resolution` accepts
+`720p`, `1440p`/`2k`, `2160p`/`4k`, or the matching `WxH` value; omitting it keeps
+2560×1440 for compatibility. Preserve ISA/red-zone preparation and check for
+hook overlaps.
 
-Private switches: `TLG_ENGINE_NATIVE_RESOLUTION=2560x1440`,
+Set `TLG_ENGINE_NATIVE_RESOLUTION` to the canonical value written into the patch:
+`1280x720`, `2560x1440`, or `3840x2160`. Other private switches are
 `TLG_INPUT_TIMING_60=1`, `TLG_TIMING_60=1`, `TLG_CLOCK_SYNC_60=1`,
 `TLG_UPSCALER=off`. Keep the older `TLG_NATIVE_OUTPUT` path absent/0.
 `TLG_PRECISE_PACING=1` is optional; keep `TLG_CLIMB_DIAG` off except for research.
-Set output to 2560x1440, English (`game_language=en`, `TLG_LANGUAGE=1`), an
-appropriate VRAM budget and `--timeout 0`. A polished public UI/profile
+Set output to the same resolution, English (`game_language=en`, `TLG_LANGUAGE=1`),
+an appropriate VRAM budget and `--timeout 0`. A polished public UI/profile
 integration is deferred; the existing launcher does not automatically enable
 this complete profile when its ordinary 60-FPS option is selected.
 

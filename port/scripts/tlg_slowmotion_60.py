@@ -48,20 +48,21 @@ def checked_writes(elf, mode='60', verify_hash=True):
             (RECIPROCAL_OFFSET, struct.pack('<f', 1.0 / GRID_HZ))]
 
 
-def expected_base_writes(elf):
+def expected_base_writes(elf, resolution=native.DEFAULT_RESOLUTION):
     fps = [(offset, data) for offset, data, _ in tlg_patches.mode_writes(
         elf, [*tlg_patches.MODES['60'], *tlg_patches.EU_100_60_EXTRA], tlg_patches.EU_100_PATCHES,
         tlg_patches.EU_100_TEXT_SIZE)]
-    return fps + native.checked_writes(elf)
+    return fps + native.checked_writes(elf, resolution=resolution)
 
 
-def apply_private_patch(elf_path, patch_path, mode='60'):
+def apply_private_patch(elf_path, patch_path, mode='60', resolution=native.DEFAULT_RESOLUTION):
     elf = Path(elf_path).read_bytes()
     clock = checked_writes(elf, mode)
+    resolution = native.normalize_resolution(resolution)
     path = Path(patch_path)
     writes = native.decode_patch_file(path.read_bytes())
-    if writes != expected_base_writes(elf):
-        raise ValueError('Slow-motion clock: expected exactly five EU 60 FPS writes plus native 1440p')
+    if writes != expected_base_writes(elf, resolution):
+        raise ValueError(f'Slow-motion clock: expected exactly five EU 60 FPS writes plus native {resolution}')
     for address, data in clock:
         if any(address < old+len(previous) and old < address+len(data)
                for old, previous in writes):

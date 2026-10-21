@@ -68,7 +68,7 @@ public:
     /// Start of a frame in the command stream (display pass).
     bool OnFrameStart();
     bool RasterScaling() const;
-    /// Opt-in TLG 1440p scene/menu/HUD raster plus native-size display replacement.
+    /// Legacy opt-in TLG 1440p host raster plus native-size display replacement.
     [[nodiscard]] bool NativeOutput() const;
     [[nodiscard]] bool EngineNativeOutput() const { return engine_native_output; }
     /// tlg: LOD bias for scene materials, log2(render / output) while a reduced scene is
@@ -218,7 +218,7 @@ private:
     bool context_hdr = true;
     u32 target_width = 1920, target_height = 1080; ///< output size of scaled presets
     bool native_output_requested = false; ///< TLG_NATIVE_OUTPUT=1, this process only
-    bool engine_native_output = false; ///< verified regular guest mode; bypass all host proxies
+    bool engine_native_output = false; ///< verified 720p/1440p/4K guest mode; bypass host proxies
     u64 ui_trigger_vs = 0x34e8a281;
     VideoCore::ImageId ldr_target{};
     VideoCore::ImageId ui_color{}, ui_depth{};

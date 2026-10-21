@@ -8,11 +8,18 @@
 namespace Vulkan::NativeOutput {
 // The private launcher verifies the exact EU mode-table patch before setting
 // this flag. This is a full engine resolution, NOT the older host-proxy path.
+constexpr std::array<uint32_t, 2> EngineSize(std::string_view requested) {
+    if (requested == "1280x720") return {1280, 720};
+    if (requested == "2560x1440") return {2560, 1440};
+    if (requested == "3840x2160") return {3840, 2160};
+    return {};
+}
+
 constexpr bool EngineNative(std::string_view requested, bool compatibility,
                             bool host_native_output, bool upscaler_disabled) {
-    return requested == "2560x1440" && !compatibility && !host_native_output && upscaler_disabled;
+    return EngineSize(requested)[0] != 0 && !compatibility && !host_native_output && upscaler_disabled;
 }
-// Explicit experimental 1440p path only. Do not change ordinary 1080p, the
+// Legacy explicit experimental 1440p host path only. Do not change ordinary 1080p, the
 // guest-resolution compatibility patch, or temporal reconstruction sessions.
 constexpr bool Enabled(bool requested, bool compatibility, bool temporal,
                        uint32_t width, uint32_t height) {

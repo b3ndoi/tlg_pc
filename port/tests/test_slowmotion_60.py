@@ -52,19 +52,21 @@ class SlowMotionTests(unittest.TestCase):
         self.assertEqual(patched[bias:bias+4],ELF[bias:bias+4])
 
     def test_private_patch_profile_retains_every_prior_write(self):
-        base=s.expected_base_writes(ELF)
-        with tempfile.TemporaryDirectory() as td:
-            elf=Path(td)/'eboot.elf'; elf.write_bytes(ELF)
-            patch=Path(td)/'patches.bin'; patch.write_bytes(pack(base))
-            note=s.apply_private_patch(elf,patch)
-            writes=n.decode_patch_file(patch.read_bytes())
-            self.assertEqual(writes,base+s.checked_writes(ELF))
-            self.assertEqual(sum(len(data) for _,data in writes),45)
-            self.assertIn('30 FPS unchanged',note)
-            self.assertEqual(elf.read_bytes(),ELF)
-            original=patch.read_bytes()
-            with self.assertRaises(ValueError): s.apply_private_patch(elf,patch)
-            self.assertEqual(patch.read_bytes(),original)
+        for resolution in n.RESOLUTIONS:
+            with self.subTest(resolution=resolution), tempfile.TemporaryDirectory() as td:
+                base=s.expected_base_writes(ELF, resolution)
+                elf=Path(td)/'eboot.elf'; elf.write_bytes(ELF)
+                patch=Path(td)/'patches.bin'; patch.write_bytes(pack(base))
+                note=s.apply_private_patch(elf,patch,resolution=resolution)
+                writes=n.decode_patch_file(patch.read_bytes())
+                self.assertEqual(writes,base+s.checked_writes(ELF))
+                self.assertEqual(sum(len(data) for _,data in writes),45)
+                self.assertIn('30 FPS unchanged',note)
+                self.assertEqual(elf.read_bytes(),ELF)
+                original=patch.read_bytes()
+                with self.assertRaises(ValueError):
+                    s.apply_private_patch(elf,patch,resolution=resolution)
+                self.assertEqual(patch.read_bytes(),original)
 
     def test_wrong_mode_missing_extra_overlap_and_bad_format_fail_atomic(self):
         base=s.expected_base_writes(ELF)

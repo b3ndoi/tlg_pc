@@ -30,7 +30,13 @@ int main() {
     assert(std::abs(native1440[0] - 4.f/3.f) < 1e-6f);
     assert(std::abs(native1440[1] - 4.f/3.f) < 1e-6f);
     using namespace Vulkan::NativeOutput;
+    assert((EngineSize("1280x720") == std::array<uint32_t,2>{1280,720}));
+    assert((EngineSize("2560x1440") == std::array<uint32_t,2>{2560,1440}));
+    assert((EngineSize("3840x2160") == std::array<uint32_t,2>{3840,2160}));
+    assert((EngineSize("1920x1080") == std::array<uint32_t,2>{0,0}));
+    assert(EngineNative("1280x720", false, false, true));
     assert(EngineNative("2560x1440", false, false, true));
+    assert(EngineNative("3840x2160", false, false, true));
     assert(!EngineNative("1920x1080", false, false, true));
     assert(!EngineNative("", false, false, true));
     assert(!EngineNative("2560x1440", true, false, true));
