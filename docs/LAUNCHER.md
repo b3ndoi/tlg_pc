@@ -1,7 +1,8 @@
 # Launcher and local achievements
 
-The launcher redesign does not change FPS patch bytes, default renderer
-settings or the existing experimental timing guards. A separate opt-in native
+Default renderer settings and the existing experimental timing guards remain
+unchanged. The explicit 1440p/60 option composes the existing guarded patches;
+it adds no new timing or gameplay algorithm. A separate opt-in native
 trophy backend adds persistence without changing gameplay/clock code.
 30 FPS and an untimed launch remain the defaults. Preparing this change does
 not install it into any existing game/test copy.
@@ -11,8 +12,11 @@ not install it into any existing game/test copy.
 - **Play:** local game/module folders, voice/text language, interface language
   and audio. The header detects a supported title ID and metadata revision.
 - **Video:** display mode, VSync, FPS overlay, frame-rate selection, renderer
-  budget and existing image filters. The ordinary 60-FPS selector still does
-  not activate the full EU timing/native-1440p developer profile.
+  budget and existing image filters. **1440p / 60 FPS — tested EU preset**
+  enables the full guarded Windows/EU 01.00 control profile, English/fullscreen
+  FIFO VSync, with batching/observers off. It uses a separate video INI and
+  does not change the 30-FPS baseline. Ordinary 60 FPS stays separate.
+  See [compatibility, VRAM guidance and limitations](FIRST_RELEASE.md).
 - **Controls:** existing mouse options and keyboard/controller remapping.
 - **Achievements:** responsive, scrollable trophy cards, local unlock records,
   owner-supplied metadata and notification preferences.

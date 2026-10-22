@@ -30,6 +30,7 @@ FROZEN = bool(getattr(sys, 'frozen', False))
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 import mod_patches  # noqa: E402
+import tested_profile  # noqa: E402
 REPO_DIR = PORT_DIR.parent
 OUT_DIR = PORT_DIR / 'out'
 USER_DIR = PORT_DIR / 'user'
@@ -89,7 +90,7 @@ DEFAULT_SETTINGS = {
     'mouse_sensitivity': 1.0,
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
-    'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
+    'frame_rate': '30',            # 30 | 60 | unlocked | 1440p60 (explicit exact-build preset)
     'track_achievements': True,    # observes existing trophy events only; never patches game logic
     'achievement_notifications': False,  # optional Windows Shell notifications, off by default
     'trophy_metadata_dir': '',     # owner-supplied decrypted XML; never bundled/downloaded
@@ -97,7 +98,7 @@ DEFAULT_SETTINGS = {
     'button_prompts': 'original',  # optional host-only artwork; no input/timing patches
     'ps5_prompt_image': '',        # optional local art, never bundled with the port
 }
-FRAME_RATES = ['30', '60', 'unlocked']
+FRAME_RATES = ['30', '60', 'unlocked', tested_profile.MODE]
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
 applied_frame_rate = '30'
 
@@ -292,7 +293,20 @@ def run_script(argv):
 
 def frame_rate(settings):
     """The requested frame rate mode: TLG_FPS, else the launcher's setting."""
+    requested = frame_rate_choice(settings)
+    return '60' if requested == tested_profile.MODE else requested
+
+
+def frame_rate_choice(settings):
     return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
+
+
+def tested_preset(settings):
+    return frame_rate_choice(settings) == tested_profile.MODE
+
+
+def video_config(settings):
+    return USER_DIR / (tested_profile.INI_NAME if tested_preset(settings) else 'tlg.ini')
 
 
 def mods_dir():
@@ -336,6 +350,11 @@ def prepare(settings, log=print):
     any enabled mod); returns the module list that was linked."""
     global applied_frame_rate
     game = settings['game_dir']
+    preset = tested_preset(settings)
+    if preset:
+        # Fail before any preparation/user writes for a foreign platform/title/image.
+        tested_profile.validate_game(game)
+        applied_frame_rate = '30'
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
     ngs2 = ngs2_module(settings)
@@ -358,7 +377,13 @@ def prepare(settings, log=print):
             log(line)
             if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
                 applied_frame_rate = line.split()[2]
-    isa_table(log)
+    if preset:
+        if applied_frame_rate != '60':
+            raise RuntimeError('1440p/60 preset: base FPS patches were not applied')
+        log(tested_profile.prepare_patches(OUT_DIR))
+        isa_table(log, force_red_zone=True)
+    else:
+        isa_table(log)
     return modules
 
 
@@ -401,7 +426,7 @@ def red_zone_wanted(env=None):
     return policy != '0' if os.name == 'nt' else policy == '1'
 
 
-def isa_table(log=print):
+def isa_table(log=print, force_red_zone=False):
     """ps4_core ISA rewrite (upstream gow3_pc #129): on a CPU without MOVBE, BMI1, LZCNT or SSE4A
     the probe replaces those instructions in the image, from the table scripts/isa_rewrite.py
     writes (iced-x86). TLG_ISA_REWRITE=1 (every set) or a list such as TLG_ISA_REWRITE=sse4a builds
@@ -409,7 +434,7 @@ def isa_table(log=print):
     (red_zone_wanted), so on Windows it is always built; the script keeps a table that already
     matches the image. A failed table is reported and the probe then explains what is missing."""
     policy = os.environ.get('TLG_ISA_REWRITE') or ''
-    red_zone = red_zone_wanted()
+    red_zone = force_red_zone or red_zone_wanted()
     if not red_zone:
         ISA_TABLE.unlink(missing_ok=True)  # always matches the boot-linked.bin just written
     missing = cpu_missing_sets(log)
@@ -493,6 +518,12 @@ def build_env(settings, extra=None):
         env['TLG_TROPHY_STATE'] = '1'
     if extra:
         env.update(extra)
+    if tested_preset(settings):
+        if applied_frame_rate != '60':
+            raise RuntimeError('1440p/60 preset must be prepared successfully before launch')
+        # Preset safety wins over inherited A/B switches and developer extras.
+        env.update(tested_profile.ENV)
+        env['TLG_CONFIG'] = str(USER_DIR / tested_profile.INI_NAME)
     return env
 
 
@@ -514,13 +545,17 @@ def new_log():
 def launch(settings, seconds=0, extra_env=None):
     """Writes the in-game settings, starts the game; returns (process, log path).
     The process's combined output is a text pipe; the caller copies it to the log."""
+    preset = tested_preset(settings)
+    if preset:
+        tested_profile.validate_game(settings['game_dir'])
+        tested_profile.validate_prepared(OUT_DIR, applied_frame_rate)
     USER_DIR.mkdir(parents=True, exist_ok=True)
     if settings.get('track_achievements', True) and applied_frame_rate == '60':
         info = achievements.game_info(settings.get('game_dir'))
         if info:
             observed = achievements.Store(USER_DIR, info['title_id'])._read_json()
             native_trophies.seed(USER_DIR, info['title_id'], observed)
-    update_ini(USER_DIR / 'tlg.ini', {
+    values = {
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),
@@ -530,7 +565,13 @@ def launch(settings, seconds=0, extra_env=None):
         'key_map': key_map_spec(settings.get('key_map') or {}),
         'button_prompts': settings.get('button_prompts') if settings.get('button_prompts') in
             ('original', 'auto', 'keyboard', 'ps5', 'xbox') else 'original',
-    })
+    }
+    config = USER_DIR / 'tlg.ini'
+    if preset:
+        # Do not leak output/engine/pacing changes into the ordinary 30-FPS INI.
+        values = {**read_ini(config), **read_ini(video_config(settings)), **values, **tested_profile.INI}
+        config = video_config(settings)
+    update_ini(config, values)
     log = new_log()
     cmd = [str(PROBE), str(OUT_DIR / 'boot-linked.bin'), '--app0', settings['game_dir'],
            '--user', str(USER_DIR), '--content-profile', str(OUT_DIR / 'content.bin'),

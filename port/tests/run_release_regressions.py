@@ -32,7 +32,7 @@ def main():
     for name in ('test_tlg_patches.py', 'test_release_defaults.py', 'test_achievements.py',
                  'test_launcher_localization.py', 'test_launcher_ui.py', 'test_trophy_catalog.py',
                  'test_native_trophies.py', 'test_trophy_save_audit.py', 'test_package_assets.py',
-                 'test_prompt_settings.py'):
+                 'test_prompt_settings.py', 'test_tested_profile.py'):
         run([sys.executable, PORT/'tests'/name])
     cxx = shutil.which('clang++' if sys.platform=='win32' else os.environ.get('CXX','c++'))
     if not cxx:

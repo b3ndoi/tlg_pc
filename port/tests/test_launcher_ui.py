@@ -166,6 +166,44 @@ class LauncherUITests(unittest.TestCase):
         self.assertEqual(self.app.settings['button_prompts'], 'original')
         tlg_run.save_settings.assert_not_called()
 
+    def test_tested_preset_is_explicit_and_selection_does_not_touch_live_ini(self):
+        self.assertEqual(self.app.frame_rate_box.current(), 0)
+        with patch.object(tlg_run.tested_profile, 'is_windows', return_value=True):
+            self.app.frame_rate_box.current(tlg_run.FRAME_RATES.index('1440p60'))
+            self.app.frame_rate_box.event_generate('<<ComboboxSelected>>')
+            self.window.update_idletasks()
+            self.assertEqual(self.app.settings['frame_rate'], '1440p60')
+            self.assertIn('1440p', self.app.frame_summary['text'])
+            self.assertFalse(self.app.play_button.instate(['disabled']))
+        tlg_run.update_ini.assert_not_called()
+        tlg_run.subprocess.Popen.assert_not_called()
+        self.assertFalse(self.user.exists())
+        self.app.frame_rate_box.current(0)
+        self.app.frame_rate_box.event_generate('<<ComboboxSelected>>')
+        self.assertEqual(self.app.settings['frame_rate'], '30')
+        self.assertEqual(self.app.settings['game_language'], 'en')
+
+    def test_unsupported_preset_is_blocked_and_30_remains_available(self):
+        self.app.settings['frame_rate'] = '1440p60'
+        with patch.object(tlg_run.tested_profile, 'is_windows', return_value=False), \
+             patch.object(ui.threading, 'Thread') as thread:
+            self.app.refresh_status()
+            self.assertTrue(self.app.play_button.instate(['disabled']))
+            self.assertIn('requires Windows', self.app.status['text'])
+            self.app.play()
+            thread.assert_not_called()
+        self.app.settings['frame_rate'] = '30'
+        self.app.refresh_status()
+        self.assertFalse(self.app.play_button.instate(['disabled']))
+
+    def test_preset_filters_write_only_the_profile_ini(self):
+        self.app.settings['frame_rate'] = '1440p60'
+        self.app.filters_changed()
+        self.assertEqual(tlg_run.update_ini.call_args.args[0], self.user / 'tlg-1440p60.ini')
+        self.app.settings['frame_rate'] = '30'
+        self.app.filters_changed()
+        self.assertEqual(tlg_run.update_ini.call_args.args[0], self.user / 'tlg.ini')
+
     def test_local_prompt_image_picker_does_not_copy_upload_or_launch(self):
         image=self.folder/'synthetic.png'
         image.write_bytes(b'Synthetic test fixture, not artwork')

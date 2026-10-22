@@ -36,7 +36,43 @@ the existing tracked patches, not a new private submodule commit.
   or automatic-grab cheat was added. Full 60-FPS campaign not validated.
 - Climbing diagnostics are disabled by default and are not a gameplay fix.
 
-## Developer-only experimental profile
+## Opt-in tested 1440p / 60 FPS launcher preset
+
+In **Video → Frame rate**, choose **1440p / 60 FPS — tested EU preset**.
+This is separate from the ordinary 60-FPS option and is never selected by default.
+It reproduces the successful private **batching-OFF control**: native regular-mode
+2560×1440, English, fullscreen FIFO VSync, five EU FPS/vegetation writes plus
+one native-resolution write and two slow-motion writes (eight / 45 bytes),
+input/script/shared-clock hooks, and precise Windows pacing. The existing
+Windows deadlock/texture/display/reload fixes remain in the native executable.
+
+Only Windows + CUSA03745 EU 01.00 is accepted. The launcher checks metadata,
+the ELF SHA256 above, every existing patch signature, and the complete generated
+patch list. Unsupported images fail closed before launching, rather than silently
+falling back to a partial profile. Mods or `TLG_FPS_PATCHES` substitutions are
+rejected if they change the expected five base writes. Installed game assets
+are read-only; only this copy's generated loader patch file is extended.
+
+Readback batching, deferred/stale readback, and climb/input/tail observers are
+explicitly off, even if inherited from an experiment's environment. The older
+host scene-proxy supersampling path stays off. Preset-specific safety settings
+win over conflicting environment/extra overrides. Ordinary modes retain their
+existing override behavior; `TLG_FPS=30` also overrides a saved preset selection.
+
+The default launch remains **untimed** (`--timeout 0`). The selected audio,
+controls, trophy preferences and VRAM budget are not changed. Choose a budget
+appropriate for your hardware: the private test used an RX 9070 XT with 16 GB
+and 10500 MB, not a budget safe to force on every GPU. This is not a locked-60
+guarantee; Trico-heavy scenes and audio still need further testing.
+
+The preset writes **user/tlg-1440p60.ini**, not the ordinary **user/tlg.ini**.
+Returning to 30 FPS uses the original INI and no extra preset patches/hooks;
+its defaults, gameplay code and timing are unchanged. Saves/cache remain in
+this package's user directory. Opening/selecting the option does not patch,
+launch, or edit any running copy. For gameplay A/B tests use a separate package
+with a physical copy of your save, never files used by an active session.
+
+### Low-level profile helpers
 
 Prepare a separate package/user directory and physical save copy, never files
 used by a running session. Produce the five guarded EU 60-FPS writes using
@@ -51,9 +87,9 @@ Private switches: `TLG_ENGINE_NATIVE_RESOLUTION=2560x1440`,
 `TLG_UPSCALER=off`. Keep the older `TLG_NATIVE_OUTPUT` path absent/0.
 `TLG_PRECISE_PACING=1` is optional; keep `TLG_CLIMB_DIAG` off except for research.
 Set output to 2560x1440, English (`game_language=en`, `TLG_LANGUAGE=1`), an
-appropriate VRAM budget and `--timeout 0`. A polished public UI/profile
-integration is deferred; the existing launcher does not automatically enable
-this complete profile when its ordinary 60-FPS option is selected.
+appropriate VRAM budget and `--timeout 0`. The launcher preset now automates
+this sequence with extra guards and video-INI isolation. The ordinary 60-FPS
+option still does not enable the complete profile.
 
 ## Regression commands
 
@@ -91,5 +127,5 @@ Pushes do not publish releases. Manual dispatch can create a draft only.
 Build checks and targeted private gameplay observations are recorded separately
 in [TESTING.md](TESTING.md); they do not complete the candidate smoke-test gate.
 The launcher now has translation catalogs and a first local trophy-observation
-pass. Visual/live acceptance remains separate; custom achievements and full
-experimental-profile UI integration are not implemented.
+pass. The explicit 1440p/60 launcher preset has CPU-only guards/tests; fresh
+packaged gameplay acceptance remains separate. Custom achievements are not implemented.
