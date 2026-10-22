@@ -273,7 +273,9 @@ class Launcher:
         self.combo(page, 0, 'display_mode', DISPLAY_MODES, lambda key: self.t(key))
         self.check(page, 1, 'vsync')
         self.check(page, 2, 'show_fps')
-        self.combo(page, 3, 'frame_rate', tlg_run.FRAME_RATES, lambda key: self.t('fps_' + key))
+        self.frame_rate_box = self.combo(page, 3, 'frame_rate', tlg_run.FRAME_RATES,
+                                         lambda key: self.t('fps_' + key), self.video_mode_changed)
+        self.frame_rate_box.configure(width=40)
         ttk.Label(page, text=self.t('fps_hint'), style='Muted.TLabel',
                   wraplength=880, justify='left').grid(row=4, column=0, columnspan=3, sticky='w', pady=(6, 12))
         ttk.Label(page, text=self.t('vram')).grid(row=5, column=0, sticky='w')
@@ -534,8 +536,7 @@ class Launcher:
         ttk.Separator(parent).grid(row=row, column=0, columnspan=2, sticky='ew', pady=(8, 4))
         ttk.Label(parent, text=self.t('filters'), style='Muted.TLabel', wraplength=360).grid(
             row=row + 1, column=0, columnspan=2, sticky='w')
-        ini = dict(INI_DEFAULTS)
-        ini.update({k: v for k, v in tlg_run.read_ini(tlg_run.USER_DIR / 'tlg.ini').items() if k in ini})
+        ini = self.filter_values()
         self.ini_vars = {}
         for offset, key in ((2, 'smaa'), (4, 'color_adjust')):
             var = tk.BooleanVar(value=ini[key] not in ('0', ''))
@@ -558,6 +559,20 @@ class Launcher:
             spin.grid(row=row + 5 + index, column=1, sticky='w', padx=6, pady=1)
             spin.bind('<FocusOut>', lambda _: self.filters_changed())
 
+    def filter_values(self):
+        ini = dict(INI_DEFAULTS)
+        for path in (tlg_run.USER_DIR / 'tlg.ini', tlg_run.video_config(self.settings)):
+            ini.update({k: v for k, v in tlg_run.read_ini(path).items() if k in ini})
+        return ini
+
+    def video_mode_changed(self):
+        # Selection only reads files; it never creates or edits either INI.
+        ini = self.filter_values()
+        for key, var in self.ini_vars.items():
+            var.set(ini[key] not in ('0', '') if key in ('smaa', 'color_adjust') else ini[key])
+        self.sharpener.current(2 if ini['cas'] not in ('0', '') else 1 if ini['rcas'] not in ('0', '') else 0)
+        self.refresh_status()
+
     def filters_changed(self):
         if self.busy:
             return
@@ -570,7 +585,7 @@ class Launcher:
                 continue  # while typing
             values[key] = f'{value:.2f}'
         tlg_run.USER_DIR.mkdir(parents=True, exist_ok=True)
-        tlg_run.update_ini(tlg_run.USER_DIR / 'tlg.ini', values)
+        tlg_run.update_ini(tlg_run.video_config(self.settings), values)
 
     def combo(self, parent, row, key, values, label, on_change=None):
         ttk.Label(parent, text=self.t(key)).grid(row=row, column=0, sticky='w')
@@ -794,13 +809,18 @@ class Launcher:
         self.game_identity.configure(text=self.t('identity', title=info['title_id'],
                                                  version=info['version'] or self.t('version_unknown'))
                                      if info else self.t('identity_unknown'))
-        self.frame_summary.configure(text=self.t('selected_mode', mode=self.t('fps_' + tlg_run.frame_rate(self.settings)))
-                                     if tlg_run.frame_rate(self.settings) in tlg_run.FRAME_RATES else self.t('baseline_hint'))
+        choice = tlg_run.frame_rate_choice(self.settings)
+        self.frame_summary.configure(text=self.t('selected_mode', mode=self.t('fps_' + choice))
+                                     if choice in tlg_run.FRAME_RATES else self.t('baseline_hint'))
+        unsupported_preset = (tlg_run.tested_preset(self.settings)
+                              and not tlg_run.tested_profile.available(self.settings['game_dir']))
+        if unsupported_preset and not self.busy:
+            self.status.configure(text=self.t('preset_unavailable'))
         for widget in self.config_widgets:
             widget.state(['disabled'] if self.busy else ['!disabled'])
         if os.name != 'nt':
             self.notification_box.state(['disabled'])
-        self.play_button.configure(state='disabled' if problems or self.busy else 'normal')
+        self.play_button.configure(state='disabled' if problems or self.busy or unsupported_preset else 'normal')
         self.cache_button.configure(state='disabled' if self.busy else 'normal')
         self.mods_button.configure(state='disabled' if self.busy else 'normal')
 
@@ -857,6 +877,10 @@ class Launcher:
             return
         self.changed()
         if tlg_run.check_game(self.settings['game_dir']):
+            self.refresh_status()
+            return
+        if (tlg_run.tested_preset(self.settings)
+                and not tlg_run.tested_profile.available(self.settings['game_dir'])):
             self.refresh_status()
             return
         for name in ('remap_window', 'mods_window'):

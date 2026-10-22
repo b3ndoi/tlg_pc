@@ -1,8 +1,21 @@
 # Testing, evidence and limitations
 
-Last documented: 2026-10-20. This page describes what has actually been checked,
+Last documented: 2026-10-22. This page describes what has actually been checked,
 not a promise that every scene, executable revision or hardware configuration
 works. The fork's default remains 30 FPS.
+
+## Launcher preset integration (2026-10-22)
+
+The explicit Windows/EU 01.00 **1440p / 60 FPS — tested EU preset** composes
+the existing eight-write / 45-byte profile, not a new gameplay algorithm.
+Local CPU-only release regressions passed, including exact-owner-ELF native
+fixtures and the two 30000-update bit-identical 30-FPS comparisons. New synthetic
+tests cover full-profile composition, hash/signature mutation rejection,
+unsupported platforms/revisions, no-launch failure paths, conflicting environment
+overrides, UI selection, and video/filter INI isolation when returning to 30 FPS.
+The frozen-launcher smoke also checks that the profile and dependencies are bundled.
+No game was launched or attached to during this integration. Fresh downloadable
+candidate gameplay smoke tests remain a separate, pending release gate.
 
 ## Reference Windows playtest system
 
@@ -61,7 +74,10 @@ pixel dimensions alone do not establish the game's internal render resolution.
 These are targeted observations, not a guarantee of locked 60 FPS or flawless
 rendering. Earlier unsuccessful test versions and their screenshots must not
 be presented as the current candidate. The regular launcher's 60-FPS selector
-does not enable the complete developer-only profile by itself.
+does not enable the complete profile by itself. The separate **1440p / 60 FPS —
+tested EU preset** now composes that existing guarded profile and explicitly
+disables batching/observers. It still needs fresh gameplay smoke testing of
+the downloadable candidate; prior private observations are not certification.
 
 ### Candidate acceptance tests still needed
 
