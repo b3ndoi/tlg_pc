@@ -1,4 +1,7 @@
 {
+  "translation_pack": "Tradução local dos tutoriais…",
+  "translation_original": "Texto original do jogo (desativado)",
+  "translation_hint": "Tradução opcional de fãs apenas para 72 tutoriais comuns. Selecione inglês como idioma do jogo. Legendas da história, menus e vozes não são traduzidos. Compile um catálogo UTF-8 conforme docs/TRANSLATING.md; aplica-se na próxima execução.",
   "_language_name": "Português (Brasil)",
   "action_cross": "pular",
   "action_triangle": "agarrar, segurar",

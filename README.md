@@ -171,7 +171,11 @@ The tabbed launcher separates Play/setup, Video, Controls, Achievements, Session
 log and About. It displays the selected game's title ID/revision rather than a
 fixed US revision label, and keeps the baseline/experimental FPS distinction
 visible. English and Portuguese interface text lives in data-only translation
-catalogs, with English fallback for additional languages.
+catalogs, with English fallback for additional languages. Serbian Latin now covers
+the launcher and an **optional first set of 72 in-game tutorial texts**. This is
+not a complete Serbian localization: story subtitles, game menus and voices remain
+unchanged. See [Translation contributions](docs/TRANSLATING.md) for UTF-8 catalogs,
+local pack compilation, current coverage, and translation PR instructions.
 
 New trophy-unlock events from games started through this launcher or its
 headless `--play` path can be recorded under

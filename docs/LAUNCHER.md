@@ -141,12 +141,20 @@ to a locale filename such as `sr_RS.json`, set `_language_name` to the language'
 own display name, and translate values without changing keys or `{placeholders}`.
 Do not put code, credentials or game assets in a catalog.
 
-Valid `xx_YY` / `xxx_YY` catalog filenames are discovered at startup; adding a
+Valid `xx_YY` / `xxx_YY` and `xx_Script_YY` catalog filenames are discovered at startup; adding a
 language does not require editing UI layout code. Missing translations fall back
 to English. English and Portuguese currently have matching complete key sets;
 new languages can start with a subset. Tests reject unknown keys or mismatched
 format fields. Both package scripts collect the entire catalog directory and
 verify the baseline catalogs are present.
+
+Serbian Latin uses `sr_Latn_RS.json`. Interface language does not select the game's
+voice/text slot. The optional **Local tutorial translation pack** selector loads a
+previously compiled `.tlgtrn` on the next start; English must remain the game language.
+**Original game text (off)** clears this selection. No current process or `tlg.ini`
+is changed by the picker. The first pack covers 72 common tutorial entries only,
+not story subtitles, game menus, host Insert-menu strings, voices or trophy metadata.
+See [TRANSLATING.md](TRANSLATING.md) for compilation and contribution instructions.
 
 ## Validation and remaining acceptance
 

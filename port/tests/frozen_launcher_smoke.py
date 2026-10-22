@@ -18,6 +18,7 @@ for module in (achievements, desktop_notifications, game_library, localization, 
     assert Path(module.__file__).resolve().is_relative_to(bundle), module.__name__
 assert len(localization.ENGLISH) > 100, 'English catalog not bundled'
 assert localization.text('play', 'pt_BR') == 'Jogar'
+assert localization.text('achievements', 'sr_Latn_RS') == 'Dostignuća'
 assert desktop_notifications.factory(False) is None
 if sys.platform == 'win32':
     assert ctypes.sizeof(desktop_notifications.NotifyData) == 976

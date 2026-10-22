@@ -255,6 +255,16 @@ class Launcher:
         self.build_game_language(language)
         self.combo(language, 1, 'ui_language', UI_LANGUAGES,
                    lambda key: self.t('auto') if key == 'auto' else UI_LANGUAGE_NAMES[key], on_change=self.build)
+        ttk.Button(language, text=self.t('translation_pack'), command=self.choose_translation_pack).grid(
+            row=2, column=0, sticky='w', pady=(8, 0))
+        self.translation_pack_name = ttk.Label(language, text=(
+            Path(tlg_run.translation_pack(self.settings)).name if tlg_run.translation_pack(self.settings)
+            else self.t('translation_original')), style='Muted.TLabel', wraplength=280)
+        self.translation_pack_name.grid(row=2, column=1, sticky='w', padx=6)
+        ttk.Button(language, text=self.t('translation_original'),
+                   command=self.clear_translation_pack).grid(row=3, column=0, sticky='w', pady=4)
+        ttk.Label(language, text=self.t('translation_hint'), wraplength=450,
+                  style='Muted.TLabel').grid(row=4, column=0, columnspan=2, sticky='w')
         audio = ttk.LabelFrame(left, text=self.t('audio'), padding=12)
         audio.grid(row=2, column=0, sticky='ew')
         self.check(audio, 0, 'native_audio')
@@ -267,6 +277,22 @@ class Launcher:
                   wraplength=340, justify='left').pack(anchor='w', pady=(0, 16))
         ttk.Label(right, text=self.t('settings_notice'), style='Muted.TLabel',
                   wraplength=340, justify='left').pack(anchor='w')
+
+    def choose_translation_pack(self):
+        if self.busy:
+            return
+        name = filedialog.askopenfilename(title=self.t('translation_pack'),
+                                         filetypes=[('TLG translation', '*.tlgtrn')])
+        if name:
+            self.settings['translation_pack'] = name
+            tlg_run.save_settings(self.settings)
+            self.translation_pack_name.configure(text=Path(name).name)
+
+    def clear_translation_pack(self):
+        if not self.busy:
+            self.settings['translation_pack'] = ''
+            tlg_run.save_settings(self.settings)
+            self.translation_pack_name.configure(text=self.t('translation_original'))
 
     def build_video(self, page):
         page.columnconfigure(1, weight=1)

@@ -21,7 +21,9 @@ class LocalizationTests(unittest.TestCase):
     def test_complete_catalogs_and_matching_placeholders(self):
         self.assertGreater(len(loc.ENGLISH), 100)
         self.assertIn('pt_BR', loc.CATALOGS)
+        self.assertIn('sr_Latn_RS', loc.CATALOGS)
         self.assertEqual(set(loc.CATALOGS['pt_BR']), set(loc.ENGLISH))
+        self.assertEqual(set(loc.CATALOGS['sr_Latn_RS']), set(loc.ENGLISH))
         for language, catalog in loc.CATALOGS.items():
             with self.subTest(language=language):
                 self.assertTrue(set(catalog).issubset(loc.ENGLISH))
@@ -40,14 +42,16 @@ class LocalizationTests(unittest.TestCase):
             self.assertEqual(loc.language({'ui_language': 'auto'}), 'pt_BR')
             self.assertEqual(loc.language({'ui_language': 'en_US'}), 'en_US')
         with patch.dict(os.environ, {'LANG': 'sr_RS.UTF-8'}, clear=True):
-            self.assertEqual(loc.language({'ui_language': 'auto'}), 'en_US')
+            self.assertEqual(loc.language({'ui_language': 'auto'}), 'sr_Latn_RS')
+        with patch.dict(os.environ, {'LANG': 'sr-Latn-RS.UTF-8'}, clear=True):
+            self.assertEqual(loc.language({'ui_language': 'auto'}), 'sr_Latn_RS')
 
     def test_new_catalog_does_not_require_ui_source_changes(self):
-        with patch.dict(loc.CATALOGS, {'sr_RS': {'_language_name': 'Srpski'}}), \
-             patch.dict(os.environ, {'LANG': 'sr_RS.UTF-8'}, clear=True):
-            self.assertEqual(loc.language({'ui_language': 'sr_RS'}), 'sr_RS')
-            self.assertEqual(loc.language({'ui_language': 'auto'}), 'sr_RS')
-            self.assertEqual(loc.text('ready', 'sr_RS'), loc.ENGLISH['ready'])
+        with patch.dict(loc.CATALOGS, {'zz_Latn_ZZ': {'_language_name': 'Synthetic'}}), \
+             patch.dict(os.environ, {'LANG': 'zz_Latn_ZZ.UTF-8'}, clear=True):
+            self.assertEqual(loc.language({'ui_language': 'zz_Latn_ZZ'}), 'zz_Latn_ZZ')
+            self.assertEqual(loc.language({'ui_language': 'auto'}), 'zz_Latn_ZZ')
+            self.assertEqual(loc.text('ready', 'zz_Latn_ZZ'), loc.ENGLISH['ready'])
 
     def test_invalid_catalog_falls_back_without_path_traversal(self):
         with tempfile.TemporaryDirectory() as directory:

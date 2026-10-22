@@ -14,6 +14,7 @@
 #include "tlg_settings.h"
 #include "tlg_frame_context.h"
 #include "tlg_prompts.h"
+#include "tlg_translations.h"
 #include "../tlggpu.h"
 
 namespace {
@@ -54,6 +55,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         UNREACHABLE_MSG("Failed to initialize SDL video: {}", SDL_GetError());
     }
+    TlgTranslations::LoadEnvironment();
     // tlg: the window opens at the game's size (1920x1080) unless the screen is smaller: on a
     // 1366x768 laptop it was larger than the screen and the picture was cut. It then opens at the
     // largest same-shape size that fits the usable area (taskbar and title bar kept clear); it can

@@ -40,7 +40,7 @@ dest=out/stage/$name
 rm -rf -- out/stage
 mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/The Last Guardian/." "$dest/"
-for language in en_US pt_BR; do
+for language in en_US pt_BR sr_Latn_RS; do
     [[ -s "$dest/_internal/locales/$language.json" ]] || { echo "Missing launcher catalog: $language" >&2; exit 1; }
 done
 llvm-strip -o "$dest/Play The Last Guardian.exe" out/tlg-play.exe
@@ -71,6 +71,11 @@ while ((${#queue[@]})); do
 done
 echo "Packaged $(find "$dest/out" -maxdepth 1 -iname '*.dll' | wc -l) DLLs from /clang64/bin"
 cp -r scripts "$dest/"
+cp -r translations "$dest/"
+mkdir -p "$dest/translations/fonts" "$dest/docs"
+cp gpu/third_party/fonts/DejaVuSans.ttf gpu/third_party/fonts/LICENSE-DejaVu.txt "$dest/translations/fonts/"
+cp requirements-translation.txt "$dest/"
+cp ../docs/TRANSLATING.md "$dest/docs/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
 printf '%s\r\n' 'Coloque aqui o libSceNgs2.sprx do firmware do seu PS4 (/system/common/lib) para ter som.' \
